@@ -1,0 +1,9 @@
+# Host build output must not reach the image: obj/project.assets.json holds absolute
+# host NuGet paths, which breaks the restore inside the container.
+**/bin/
+**/obj/
+
+.git/
+.env
+media/
+README.md
