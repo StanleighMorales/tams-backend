@@ -16,11 +16,15 @@ docker compose up --build
 Then:
 
 ```bash
-curl http://localhost/health
+curl -k https://localhost/health
 ```
 
 Expect `{"status":"ok","database":"up"}`. A 503 with `"database":"down"` means the API
 is up but cannot reach PostgreSQL — check `docker compose logs db`.
+
+Caddy redirects port 80 to 443 and signs the localhost certificate with its own local
+CA, which is why `-k` is needed locally. On the VPS with a real `TAMS_DOMAIN` the
+certificate is publicly trusted and `-k` is not.
 
 ## Services
 
