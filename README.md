@@ -1,0 +1,63 @@
+# TAMS Backend
+
+ASP.NET Core API and PostgreSQL for TAMS — RFID-Based Technical Assets Management System.
+Capstone 2026, ACLC College of Mandaue.
+
+Architecture is PRD section 6.1. Hosting is `deployment-decision.md` in the planning folder:
+one VPS, three containers, Compose.
+
+## Run it
+
+```bash
+cp .env.example .env     # set POSTGRES_PASSWORD
+docker compose up --build
+```
+
+Then:
+
+```bash
+curl http://localhost/health
+```
+
+Expect `{"status":"ok","database":"up"}`. A 503 with `"database":"down"` means the API
+is up but cannot reach PostgreSQL — check `docker compose logs db`.
+
+## Services
+
+| Service | Image | Port | Notes |
+|---|---|---|---|
+| `proxy` | `caddy:2-alpine` | 80, 443 | Automatic HTTPS from `TAMS_DOMAIN`; passes WebSocket upgrades for SignalR |
+| `api` | built from `Dockerfile` | 8080, internal | ASP.NET Core, non-root |
+| `db` | `postgres:17-alpine` | internal only | Not published; the API is the only client |
+
+Volumes: `db-data` (database), `media` (kiosk photos, report PDFs, QR sheets),
+`caddy-data` and `caddy-config` (certificates).
+
+## Layout
+
+```
+Dockerfile              api image, multi-stage
+docker-compose.yml      the three services
+Caddyfile               reverse proxy and TLS
+.env.example            copy to .env
+Tams.slnx
+src/Tams.Api/           minimal API; /health is the only endpoint so far
+```
+
+## What is not here yet
+
+This is the Compose skeleton (TAMS-20). Still to come:
+
+- EF Core, `DbContext` and the schema v1 migrations — TAMS-27, which depends on the
+  open calls settled in TAMS-21.
+- Auth, CRUD, roster import — Sprint 1.
+- The SignalR hub — the Caddy side is already correct, so the hub is just a map call.
+
+## Local development without Docker
+
+```bash
+dotnet run --project src/Tams.Api
+```
+
+Needs a reachable PostgreSQL and `ConnectionStrings__Default` set, so Compose is
+usually easier.

@@ -1,0 +1,11 @@
+bin/
+obj/
+.vs/
+.vscode/
+.idea/
+*.user
+
+.env
+
+# Local file storage; the media volume holds these in Compose.
+media/

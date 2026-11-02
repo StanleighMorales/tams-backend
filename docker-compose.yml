@@ -1,0 +1,56 @@
+name: tams
+
+# Three services, as decided in deployment-decision.md section 4. The same file
+# runs on the VPS and on a laptop for the defense-day fallback (section 14).
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-tams}
+      POSTGRES_USER: ${POSTGRES_USER:-tams}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    # No published port: PostgreSQL is reachable from the api service only (PRD 6.1).
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tams} -d ${POSTGRES_DB:-tams}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  api:
+    build: .
+    environment:
+      ConnectionStrings__Default: >-
+        Host=db;Port=5432;Database=${POSTGRES_DB:-tams};Username=${POSTGRES_USER:-tams};Password=${POSTGRES_PASSWORD}
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      # Kiosk photos, report PDFs and QR sheets (PRD 6.1 file storage).
+      - media:/app/media
+    restart: unless-stopped
+
+  proxy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      TAMS_DOMAIN: ${TAMS_DOMAIN:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  db-data:
+  media:
+  caddy-data:
+  caddy-config:

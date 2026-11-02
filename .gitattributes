@@ -1,0 +1,4 @@
+# The Dockerfile and Caddyfile are read inside Linux containers, so keep LF in the
+# repo whatever the checkout OS does.
+* text=auto eol=lf
+*.png binary

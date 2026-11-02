@@ -1,0 +1,8 @@
+{$TAMS_DOMAIN:localhost} {
+	encode zstd gzip
+
+	# reverse_proxy passes WebSocket upgrades straight through, which is what
+	# SignalR needs (deployment-decision.md section 6). Caddy v2 needs no extra
+	# directive for it, so there is nothing here to get wrong later.
+	reverse_proxy api:8080
+}
