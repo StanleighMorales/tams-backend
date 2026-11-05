@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Tams.Api.Assets;
 using Tams.Api.Data;
 using Tams.Api.Http;
 
@@ -25,6 +26,8 @@ if (app.Environment.IsDevelopment())
     using var scope = app.Services.CreateScope();
     await scope.ServiceProvider.GetRequiredService<TamsDbContext>().Database.MigrateAsync();
 }
+
+app.MapAssetEndpoints();
 
 // Compose healthcheck polls this, and it is the first thing to check after a deploy.
 app.MapGet("/health", async (TamsDbContext db, ILogger<Program> logger, CancellationToken ct) =>
