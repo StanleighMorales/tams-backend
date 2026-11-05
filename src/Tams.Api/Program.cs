@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Tams.Api.Data;
 using Tams.Api.Http;
+using Tams.Api.Settings;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -12,6 +13,7 @@ var connectionString = builder.Configuration.GetConnectionString("Default")
         "ConnectionStrings__Default is not set. Copy .env.example to .env and set POSTGRES_PASSWORD.");
 
 builder.Services.AddDbContext<TamsDbContext>(o => o.UseNpgsql(connectionString, PgEnums.MapAll));
+builder.Services.AddTamsSettings();
 
 var app = builder.Build();
 
@@ -44,5 +46,7 @@ app.MapGet("/health", async (TamsDbContext db, ILogger<Program> logger, Cancella
         new { status = "degraded", database = "down" },
         statusCode: StatusCodes.Status503ServiceUnavailable);
 });
+
+app.MapSettingsEndpoints();
 
 app.Run();
