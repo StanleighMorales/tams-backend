@@ -1,10 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using Tams.Api.Data;
+using Tams.Api.Http;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-builder.Services.AddOpenApi();
+builder.Services.AddTamsOpenApi();
+builder.Services.AddTamsProblemDetails();
 
 var connectionString = builder.Configuration.GetConnectionString("Default")
     ?? throw new InvalidOperationException(
@@ -14,11 +15,11 @@ builder.Services.AddDbContext<TamsDbContext>(o => o.UseNpgsql(connectionString, 
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+app.UseTamsProblemDetails();
+app.MapTamsDocs();
+
 if (app.Environment.IsDevelopment())
 {
-    app.MapOpenApi();
-
     // Development only: bring the schema up to date on start. Production applies
     // migrations deliberately (dotnet ef database update or a migration bundle).
     using var scope = app.Services.CreateScope();
