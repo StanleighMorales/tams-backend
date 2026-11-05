@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Tams.Api.Data;
+using Tams.Api.Facilities;
 using Tams.Api.Http;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -44,5 +45,7 @@ app.MapGet("/health", async (TamsDbContext db, ILogger<Program> logger, Cancella
         new { status = "degraded", database = "down" },
         statusCode: StatusCodes.Status503ServiceUnavailable);
 });
+
+app.MapFacilityEndpoints();
 
 app.Run();
