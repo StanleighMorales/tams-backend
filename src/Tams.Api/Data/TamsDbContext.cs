@@ -1,0 +1,179 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata;
+using Tams.Api.Data.Entities;
+
+namespace Tams.Api.Data;
+
+// Schema v1 (PRD 7.3 plus schema-v1-decisions.md). Entities carry scalar FK properties only;
+// foreign keys are wired by name in OnModelCreating, so there are no navigation properties.
+public class TamsDbContext(DbContextOptions<TamsDbContext> options) : DbContext(options)
+{
+    public DbSet<User> Users => Set<User>();
+    public DbSet<DeviceToken> DeviceTokens => Set<DeviceToken>();
+    public DbSet<AuthCard> AuthCards => Set<AuthCard>();
+    public DbSet<Section> Sections => Set<Section>();
+    public DbSet<Student> Students => Set<Student>();
+    public DbSet<FingerprintTemplate> FingerprintTemplates => Set<FingerprintTemplate>();
+    public DbSet<Room> Rooms => Set<Room>();
+    public DbSet<Station> Stations => Set<Station>();
+    public DbSet<StationHeartbeat> StationHeartbeats => Set<StationHeartbeat>();
+    public DbSet<AssetCategory> AssetCategories => Set<AssetCategory>();
+    public DbSet<Asset> Assets => Set<Asset>();
+    public DbSet<CheckoutSession> CheckoutSessions => Set<CheckoutSession>();
+    public DbSet<Approval> Approvals => Set<Approval>();
+    public DbSet<Loan> Loans => Set<Loan>();
+    public DbSet<RoomScan> RoomScans => Set<RoomScan>();
+    public DbSet<Anomaly> Anomalies => Set<Anomaly>();
+    public DbSet<TransactionLedger> TransactionLedger => Set<TransactionLedger>();
+    public DbSet<LateArrivalWarning> LateArrivalWarnings => Set<LateArrivalWarning>();
+    public DbSet<NonComplianceMark> NonComplianceMarks => Set<NonComplianceMark>();
+    public DbSet<ProfileHold> ProfileHolds => Set<ProfileHold>();
+    public DbSet<ApprovalFreeze> ApprovalFreezes => Set<ApprovalFreeze>();
+    public DbSet<Liability> Liabilities => Set<Liability>();
+    public DbSet<Event> Events => Set<Event>();
+    public DbSet<Audit> Audits => Set<Audit>();
+    public DbSet<AuditItem> AuditItems => Set<AuditItem>();
+    public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<MediaFile> MediaFiles => Set<MediaFile>();
+    public DbSet<AuditLogEntry> AuditLog => Set<AuditLogEntry>();
+    public DbSet<SystemSetting> SystemSettings => Set<SystemSetting>();
+
+    // Suffix of an FK property name (HomeRoomId -> "Room") to the table it points at.
+    static readonly (string Suffix, Type Target)[] FkTargets =
+    [
+        ("User", typeof(User)), ("Student", typeof(Student)), ("Section", typeof(Section)),
+        ("Room", typeof(Room)), ("Station", typeof(Station)), ("Category", typeof(AssetCategory)),
+        ("Asset", typeof(Asset)), ("Session", typeof(CheckoutSession)), ("Approval", typeof(Approval)),
+        ("Loan", typeof(Loan)), ("Event", typeof(Event)), ("Audit", typeof(Audit)),
+        ("Anomaly", typeof(Anomaly)), ("File", typeof(MediaFile)), ("Card", typeof(AuthCard)),
+        ("Mark", typeof(NonComplianceMark)), ("Freeze", typeof(ApprovalFreeze)),
+    ];
+
+    protected override void OnModelCreating(ModelBuilder b)
+    {
+        b.HasPostgresExtension("citext");
+        PgEnums.CreateAll(b);
+
+        ConfigureUsers(b);
+        ConfigureIndexes(b);
+        ConfigureChecks(b);
+        WireForeignKeys(b);
+        ApplyConventions(b);
+    }
+
+    static void ConfigureUsers(ModelBuilder b)
+    {
+        b.Entity<User>(e =>
+        {
+            // Login is email only (decision #3); Identity's own columns we do not use are dropped.
+            e.Property(u => u.Email).HasColumnType("citext").HasMaxLength(256).IsRequired();
+            e.Property(u => u.UserName).HasMaxLength(256);
+            e.Property(u => u.NormalizedUserName).HasMaxLength(256);
+            e.Property(u => u.NormalizedEmail).HasMaxLength(256);
+            e.Property(u => u.ConcurrencyStamp).IsConcurrencyToken();
+            e.Ignore(u => u.EmailConfirmed);
+            e.Ignore(u => u.PhoneNumber);
+            e.Ignore(u => u.PhoneNumberConfirmed);
+            e.Ignore(u => u.TwoFactorEnabled);
+            e.HasIndex(u => u.Email).IsUnique();
+            e.HasIndex(u => u.NormalizedUserName).IsUnique();
+            e.HasIndex(u => u.NormalizedEmail);
+        });
+    }
+
+    static void ConfigureIndexes(ModelBuilder b)
+    {
+        b.Entity<User>().HasIndex(x => x.EmployeeNo).IsUnique();
+        b.Entity<DeviceToken>().HasIndex(x => x.Token).IsUnique();
+        b.Entity<AuthCard>().HasIndex(x => x.CardUid).IsUnique();
+        b.Entity<Section>().HasIndex(x => new { x.Code, x.SchoolYear }).IsUnique();
+        b.Entity<Student>().HasIndex(x => x.StudentNo).IsUnique();
+        b.Entity<FingerprintTemplate>().HasIndex(x => new { x.StudentId, x.FingerIndex }).IsUnique();
+        b.Entity<Room>().HasIndex(x => x.Code).IsUnique();
+        b.Entity<Station>().HasIndex(x => x.StationCode).IsUnique();
+        b.Entity<StationHeartbeat>().HasIndex(x => new { x.StationId, x.ReceivedAt });
+        b.Entity<AssetCategory>().HasIndex(x => x.Name).IsUnique();
+        b.Entity<Asset>().HasIndex(x => x.AssetCode).IsUnique();
+        b.Entity<Asset>().HasIndex(x => x.RfidTagUid).IsUnique(); // null allowed, many nulls fine
+        b.Entity<Approval>().HasIndex(x => x.SessionId).IsUnique();
+        b.Entity<Loan>().HasIndex(x => x.LoanNo).IsUnique();
+        // An asset can have only one open loan (PRD 7.3).
+        b.Entity<Loan>().HasIndex(x => x.AssetId).IsUnique().HasDatabaseName("ux_loans_open_asset")
+            .HasFilter("status IN ('ACTIVE','OVERDUE')");
+        b.Entity<RoomScan>().HasIndex(x => new { x.StationId, x.ScannedAt });
+        b.Entity<LateArrivalWarning>().HasIndex(x => x.LoanId).IsUnique();
+        b.Entity<NonComplianceMark>().HasIndex(x => new { x.LoanId, x.Reason }).IsUnique();
+        b.Entity<Liability>().HasIndex(x => x.LoanId).IsUnique();
+        b.Entity<AuditItem>().HasIndex(x => x.ClientScanId).IsUnique();
+        b.Entity<AuditLogEntry>().HasIndex(x => new { x.EntityType, x.EntityId });
+        b.Entity<AuditLogEntry>().HasIndex(x => x.CreatedAt);
+        b.Entity<Notification>().HasIndex(x => new { x.RecipientUserId, x.ReadAt });
+    }
+
+    static void ConfigureChecks(ModelBuilder b)
+    {
+        b.Entity<FingerprintTemplate>().ToTable(t => t.HasCheckConstraint("ck_fingerprint_templates_finger_index", "finger_index BETWEEN 0 AND 9"));
+        b.Entity<Approval>().ToTable(t => t.HasCheckConstraint("ck_approvals_class_length", "class_length_minutes IS NULL OR class_length_minutes BETWEEN 90 AND 180"));
+        b.Entity<Loan>().ToTable(t =>
+        {
+            t.HasCheckConstraint("ck_loans_class_length", "class_length_minutes IS NULL OR class_length_minutes BETWEEN 90 AND 180");
+            t.HasCheckConstraint("ck_loans_grace", "grace_minutes BETWEEN 15 AND 30");
+        });
+        b.Entity<Event>().ToTable(t => t.HasCheckConstraint("ck_events_period", "ends_at > starts_at"));
+    }
+
+    // Every property named <Something>Id whose suffix is in FkTargets becomes an FK. Restrict by
+    // default so soft-deleted history is never cascaded away; children owned by one parent cascade.
+    static void WireForeignKeys(ModelBuilder b)
+    {
+        var cascade = new HashSet<(Type, string)>
+        {
+            (typeof(DeviceToken), nameof(DeviceToken.UserId)),
+            (typeof(FingerprintTemplate), nameof(FingerprintTemplate.StudentId)),
+            (typeof(StationHeartbeat), nameof(StationHeartbeat.StationId)),
+            (typeof(AuditItem), nameof(AuditItem.AuditId)),
+        };
+
+        foreach (var entity in b.Model.GetEntityTypes().ToList())
+        {
+            var clr = entity.ClrType;
+            foreach (var prop in clr.GetProperties().Where(p => p.Name.EndsWith("Id") && p.Name != "Id"))
+            {
+                var stem = prop.Name[..^2];
+                var target = FkTargets.OrderByDescending(f => f.Suffix.Length)
+                    .FirstOrDefault(f => stem.EndsWith(f.Suffix)).Target;
+                if (target is null) continue;
+
+                b.Entity(clr).HasOne(target).WithMany().HasForeignKey(prop.Name)
+                    .OnDelete(cascade.Contains((clr, prop.Name)) ? DeleteBehavior.Cascade : DeleteBehavior.Restrict);
+            }
+        }
+    }
+
+    // snake_case columns and keys, uuid and now() defaults.
+    static void ApplyConventions(ModelBuilder b)
+    {
+        foreach (var entity in b.Model.GetEntityTypes())
+        {
+            var table = entity.GetTableName()!;
+            foreach (var prop in entity.GetProperties())
+            {
+                prop.SetColumnName(PgEnums.ToSnake(prop.Name));
+
+                if (prop.Name == "Id" && prop.ClrType == typeof(Guid))
+                    prop.SetDefaultValueSql("gen_random_uuid()");
+                else if (prop.Name == "Id" && prop.ClrType == typeof(long))
+                    prop.ValueGenerated = ValueGenerated.OnAdd;
+                else if (prop.Name is "CreatedAt" or "UpdatedAt" && prop.ClrType == typeof(DateTimeOffset))
+                    prop.SetDefaultValueSql("now()");
+            }
+
+            entity.FindPrimaryKey()!.SetName($"pk_{table}");
+            foreach (var fk in entity.GetForeignKeys())
+                fk.SetConstraintName($"fk_{table}_{PgEnums.ToSnake(fk.Properties[0].Name)}");
+            foreach (var ix in entity.GetIndexes().Where(i => i.GetDatabaseName() is { } n && n.StartsWith("IX_")))
+                ix.SetDatabaseName($"ix_{table}_{string.Join('_', ix.Properties.Select(p => PgEnums.ToSnake(p.Name)))}"
+                    + (ix.IsUnique ? "_uq" : ""));
+        }
+    }
+}
