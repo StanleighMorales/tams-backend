@@ -26,6 +26,23 @@ Caddy redirects port 80 to 443 and signs the localhost certificate with its own 
 CA, which is why `-k` is needed locally. On the VPS with a real `TAMS_DOMAIN` the
 certificate is publicly trusted and `-k` is not.
 
+## API docs and error format
+
+In Development the OpenAPI spec is at `/openapi/v1.json` and the Scalar UI at `/scalar`
+(`dotnet run --project src/Tams.Api`, port 5111). In Production they are off; set
+`Docs__Enabled=true` to turn them on. The JWT `Bearer` scheme is declared, so the UI's
+Authorize box works once auth lands.
+
+Every error is RFC 7807 `application/problem+json` with a stable `code` and a `traceId`:
+
+```json
+{"type":"...","title":"Not Found","status":404,"code":"NOT_FOUND","traceId":"00-..."}
+```
+
+Endpoints return coded problems with `Tams.Api.Http.Problems`, e.g.
+`Problems.Conflict("RESTORE_CONFLICT", "Tag is already assigned.")`. Unhandled exceptions
+become a 500 `INTERNAL_ERROR` with no detail or stack trace outside Development.
+
 ## Services
 
 | Service | Image | Port | Notes |
