@@ -46,16 +46,29 @@ Caddyfile               reverse proxy and TLS
 .env.example            copy to .env
 Tams.slnx
 src/Tams.Api/           minimal API; /health is the only endpoint so far
+src/Tams.Api/Data/      TamsDbContext, entities, enums, migrations (schema v1)
 ```
 
 ## What is not here yet
 
 This is the Compose skeleton (TAMS-20). Still to come:
 
-- EF Core, `DbContext` and the schema v1 migrations — TAMS-27, which depends on the
-  open calls settled in TAMS-21.
 - Auth, CRUD, roster import — Sprint 1.
 - The SignalR hub — the Caddy side is already correct, so the hub is just a map call.
+
+## Database migrations
+
+Schema v1 lives in `src/Tams.Api/Data/Migrations`. In Development the API applies pending
+migrations on start; in Production apply them deliberately. The EF tool is pinned in
+`dotnet-tools.json`:
+
+```bash
+dotnet tool restore
+dotnet tool run dotnet-ef migrations add <Name> --project src/Tams.Api --output-dir Data/Migrations
+dotnet tool run dotnet-ef database update --project src/Tams.Api
+```
+
+`ConnectionStrings__Default` must be set for these commands too.
 
 ## Local development without Docker
 
