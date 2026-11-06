@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Tams.Api.Auth;
 using Tams.Api.Data;
 using Tams.Api.Http;
 
@@ -6,6 +7,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddTamsOpenApi();
 builder.Services.AddTamsProblemDetails();
+builder.Services.AddTamsAuth(builder.Configuration);
 
 var connectionString = builder.Configuration.GetConnectionString("Default")
     ?? throw new InvalidOperationException(
@@ -16,6 +18,7 @@ builder.Services.AddDbContext<TamsDbContext>(o => o.UseNpgsql(connectionString, 
 var app = builder.Build();
 
 app.UseTamsProblemDetails();
+app.UseTamsAuth();
 app.MapTamsDocs();
 
 if (app.Environment.IsDevelopment())
@@ -25,6 +28,9 @@ if (app.Environment.IsDevelopment())
     using var scope = app.Services.CreateScope();
     await scope.ServiceProvider.GetRequiredService<TamsDbContext>().Database.MigrateAsync();
 }
+
+await app.SeedDevelopmentAdminAsync();
+app.MapAuthEndpoints();
 
 // Compose healthcheck polls this, and it is the first thing to check after a deploy.
 app.MapGet("/health", async (TamsDbContext db, ILogger<Program> logger, CancellationToken ct) =>
