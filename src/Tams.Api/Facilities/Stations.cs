@@ -34,7 +34,7 @@ public static class StationEndpoints
         var g = app.MapGroup("/stations").WithTags("Stations");
 
         g.MapGet("/", List).RequireRoles(FacilityRoles.Read);
-        g.MapGet("/health", Health).RequireRoles(FacilityRoles.Read);
+        g.MapGet("/health", Health).RequireRoles(Roles.Admin, Roles.TechStaff, Roles.Custodian);
         g.MapGet("/{id:guid}", Get).RequireRoles(FacilityRoles.Read);
         g.MapPost("/", Create).RequireRoles(FacilityRoles.Write);
         g.MapPut("/{id:guid}", Update).RequireRoles(FacilityRoles.Write);

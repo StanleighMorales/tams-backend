@@ -21,8 +21,9 @@ public static class RoomEndpoints
     {
         var g = app.MapGroup("/rooms").WithTags("Rooms");
 
-        g.MapGet("/", List).RequireRoles(FacilityRoles.Read);
-        g.MapGet("/{id:guid}", Get).RequireRoles(FacilityRoles.Read);
+        // Custodians pick rooms for audits and instructors pick a destination room, so reads are open to any signed-in user.
+        g.MapGet("/", List).RequireAuthorization(Policies.AnyUser);
+        g.MapGet("/{id:guid}", Get).RequireAuthorization(Policies.AnyUser);
         g.MapPost("/", Create).RequireRoles(FacilityRoles.Write);
         g.MapPut("/{id:guid}", Update).RequireRoles(FacilityRoles.Write);
         g.MapDelete("/{id:guid}", Delete).RequireRoles(FacilityRoles.Write);
