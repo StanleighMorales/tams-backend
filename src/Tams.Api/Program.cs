@@ -8,6 +8,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddTamsOpenApi();
 builder.Services.AddTamsProblemDetails();
 builder.Services.AddTamsAuth(builder.Configuration);
+builder.Services.AddTamsPolicies();
 
 var connectionString = builder.Configuration.GetConnectionString("Default")
     ?? throw new InvalidOperationException(
@@ -49,6 +50,8 @@ app.MapGet("/health", async (TamsDbContext db, ILogger<Program> logger, Cancella
     return Results.Json(
         new { status = "degraded", database = "down" },
         statusCode: StatusCodes.Status503ServiceUnavailable);
-});
+}).AllowAnonymous();
+
+if (app.Environment.IsDevelopment()) AuthorizationCoverage.LogViolations(app); // keep after the last Map* call
 
 app.Run();
