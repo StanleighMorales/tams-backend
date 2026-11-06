@@ -6,6 +6,7 @@ using Tams.Api.Auth;
 using Tams.Api.Data;
 using Tams.Api.Data.Entities;
 using Tams.Api.Http;
+using Tams.Api.Settings;
 using static Tams.Api.Enrollment.EnrollmentSessions;
 
 namespace Tams.Api.Enrollment;
@@ -47,7 +48,7 @@ public static class EnrollmentEndpoints
 
     // ---------------------------------------------------------------- staff
 
-    static async Task<IResult> StartSession(StartEnrollmentRequest req, ClaimsPrincipal user, TamsDbContext db, CancellationToken ct)
+    static async Task<IResult> StartSession(StartEnrollmentRequest req, ClaimsPrincipal user, TamsDbContext db, ISettings settings, CancellationToken ct)
     {
         if (ActorId(user) is not Guid actor) return Problems.Unauthorized("UNAUTHORIZED", "Missing user identity.");
         if (req.FingerIndex is < 0 or > 9)
@@ -85,12 +86,22 @@ public static class EnrollmentEndpoints
             Status = SessionStatus.AwaitingFingerprint,
             InstructorUserId = actor, // the staff member who started it (PRD: card owner or coordinator)
             StudentId = student.Id,
-            LcdLines = Meta.Write(req.FingerIndex, Lcd(SessionStatus.AwaitingFingerprint, student, req.FingerIndex)),
+            FingerIndex = req.FingerIndex,
+            LcdLines = LcdJson.Write(Lcd(SessionStatus.AwaitingFingerprint, student, req.FingerIndex)),
             CreatedAt = now,
-            ExpiresAt = now + await TimeoutAsync(db, ct),
+            ExpiresAt = now + await TimeoutAsync(settings, ct),
         };
         db.CheckoutSessions.Add(session);
-        await db.SaveChangesAsync(ct);
+        try { await db.SaveChangesAsync(ct); }
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation } pg)
+        {
+            // Lost a race with another start: the partial unique indexes are the backstop for the pre-checks above.
+            if (pg.ConstraintName == "ux_checkout_sessions_open_enrollment_student")
+                return Problems.Conflict("ENROLLMENT_ALREADY_OPEN", "This student already has an open enrollment session.");
+            if (pg.ConstraintName == "ux_checkout_sessions_open_station")
+                return Problems.Conflict("STATION_BUSY", "The station already has an open session.");
+            throw;
+        }
         return Results.Created($"/api/enrollment/sessions/{session.Id}", StaffView(session));
     }
 
@@ -150,7 +161,7 @@ public static class EnrollmentEndpoints
         return deny ?? Results.Ok(KioskView(s!));
     }
 
-    static async Task<IResult> KioskSubmit(Guid id, SubmitFingerprintRequest req, HttpContext http, TamsDbContext db, CancellationToken ct)
+    static async Task<IResult> KioskSubmit(Guid id, SubmitFingerprintRequest req, HttpContext http, TamsDbContext db, ISettings settings, CancellationToken ct)
     {
         var (s, deny) = await KioskSessionAsync(id, http, db, ct);
         if (deny is not null) return deny;
@@ -171,14 +182,14 @@ public static class EnrollmentEndpoints
         if (req.QualityScore is < 0 or > 1000) errors["qualityScore"] = ["Must be between 0 and 1000."];
         if (errors.Count > 0) return Problems.Validation(errors);
 
-        var meta = Meta.Read(s);
+        var fingerIndex = FingerOf(s);
         var studentId = s.StudentId!.Value;
-        if (await db.FingerprintTemplates.AnyAsync(t => t.StudentId == studentId && t.FingerIndex == meta.FingerIndex, ct))
+        if (await db.FingerprintTemplates.AnyAsync(t => t.StudentId == studentId && t.FingerIndex == fingerIndex, ct))
             return Problems.Conflict("FINGER_ALREADY_ENROLLED", "This finger is already enrolled.");
 
         var student = await db.Students.AsNoTracking().FirstAsync(x => x.Id == studentId, ct);
-        var lcd = Meta.Write(meta.FingerIndex, Lcd(SessionStatus.AwaitingConfirm, student, meta.FingerIndex));
-        var expires = DateTimeOffset.UtcNow + await TimeoutAsync(db, ct); // fresh window to press OK
+        var lcd = LcdJson.Write(Lcd(SessionStatus.AwaitingConfirm, student, fingerIndex));
+        var expires = DateTimeOffset.UtcNow + await TimeoutAsync(settings, ct); // fresh window to press OK
         var cipher = TemplateProtector.Protect(http.RequestServices, plain);
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
@@ -194,7 +205,7 @@ public static class EnrollmentEndpoints
         {
             Id = Guid.NewGuid(),
             StudentId = studentId,
-            FingerIndex = meta.FingerIndex,
+            FingerIndex = fingerIndex,
             Template = cipher,
             SensorModel = req.SensorModel!,
             QualityScore = req.QualityScore,
@@ -222,9 +233,9 @@ public static class EnrollmentEndpoints
         if (deny is not null) return deny;
         if (s!.Status != SessionStatus.AwaitingConfirm) return InvalidState(s.Status, "confirm");
 
-        var meta = Meta.Read(s);
+        var fingerIndex = FingerOf(s);
         var student = await db.Students.AsNoTracking().FirstAsync(x => x.Id == s.StudentId, ct);
-        var lcd = Meta.Write(meta.FingerIndex, Lcd(SessionStatus.Completed, student, meta.FingerIndex));
+        var lcd = LcdJson.Write(Lcd(SessionStatus.Completed, student, fingerIndex));
         var now = DateTimeOffset.UtcNow;
         var claimed = await db.CheckoutSessions
             .Where(x => x.Id == id && x.Status == SessionStatus.AwaitingConfirm)
@@ -235,10 +246,10 @@ public static class EnrollmentEndpoints
         if (claimed == 0) return InvalidState(SessionStatus.Completed, "confirm");
 
         var tpl = await db.FingerprintTemplates.AsNoTracking()
-            .Where(t => t.StudentId == s.StudentId && t.FingerIndex == meta.FingerIndex)
+            .Where(t => t.StudentId == s.StudentId && t.FingerIndex == fingerIndex)
             .Select(t => new { t.SensorModel, t.QualityScore }).FirstOrDefaultAsync(ct);
         await WriteAuditAsync(db, http, s.InstructorUserId, s.StationId, "FINGERPRINT_ENROLLED", s.StudentId!.Value, null,
-            JsonSerializer.Serialize(new { fingerIndex = meta.FingerIndex, tpl?.SensorModel, tpl?.QualityScore, sessionId = id }), ct);
+            JsonSerializer.Serialize(new { fingerIndex, tpl?.SensorModel, tpl?.QualityScore, sessionId = id }), ct);
         return Results.Ok(KioskView((await FindAsync(db, id, ct))!));
     }
 
@@ -256,9 +267,9 @@ public static class EnrollmentEndpoints
             return InvalidState(s.Status, "cancel");
 
         var from = s.Status;
-        var meta = Meta.Read(s);
+        var fingerIndex = FingerOf(s);
         var student = await db.Students.AsNoTracking().FirstAsync(x => x.Id == s.StudentId, ct);
-        var lcd = Meta.Write(meta.FingerIndex, Lcd(SessionStatus.Cancelled, student, meta.FingerIndex));
+        var lcd = LcdJson.Write(Lcd(SessionStatus.Cancelled, student, fingerIndex));
         var now = DateTimeOffset.UtcNow;
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
@@ -269,7 +280,7 @@ public static class EnrollmentEndpoints
                 .SetProperty(x => x.CompletedAt, now), ct);
         if (claimed == 0) return InvalidState(SessionStatus.Cancelled, "cancel");
         if (from == SessionStatus.AwaitingConfirm)
-            await RemoveStoredTemplateAsync(db, student.Id, meta.FingerIndex, ct);
+            await RemoveStoredTemplateAsync(db, student.Id, fingerIndex, ct);
         await tx.CommitAsync(ct);
         return Results.Ok(view((await FindAsync(db, s.Id, ct))!));
     }
@@ -299,16 +310,15 @@ public static class EnrollmentEndpoints
     static object StaffView(CheckoutSession s) => new
     {
         id = s.Id, status = s.Status.ToString(), s.StudentId, s.StationId,
-        fingerIndex = Meta.Read(s).FingerIndex, s.ExpiresAt, s.CreatedAt, s.CompletedAt, s.FailureCode,
+        fingerIndex = FingerOf(s), s.ExpiresAt, s.CreatedAt, s.CompletedAt, s.FailureCode,
     };
 
     static object KioskView(CheckoutSession s)
     {
-        var m = Meta.Read(s);
         return new
         {
-            sessionId = s.Id, status = s.Status.ToString(), fingerIndex = m.FingerIndex,
-            lcdLines = m.Lines, s.ExpiresAt, finished = !IsOpen(s.Status),
+            sessionId = s.Id, status = s.Status.ToString(), fingerIndex = FingerOf(s),
+            lcdLines = LcdJson.Read(s), s.ExpiresAt, finished = !IsOpen(s.Status),
         };
     }
 }

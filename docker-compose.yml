@@ -35,6 +35,8 @@ services:
     volumes:
       # Kiosk photos, report PDFs and QR sheets (PRD 6.1 file storage).
       - media:/app/media
+      # ASP.NET Data Protection key ring (encrypts fingerprint templates). Lose it, lose the templates.
+      - dp-keys:/app/keys
     restart: unless-stopped
 
   proxy:
@@ -55,5 +57,6 @@ services:
 volumes:
   db-data:
   media:
+  dp-keys:
   caddy-data:
   caddy-config:
