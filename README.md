@@ -95,3 +95,22 @@ dotnet run --project src/Tams.Api
 
 Needs a reachable PostgreSQL and `ConnectionStrings__Default` set, so Compose is
 usually easier.
+
+## Student roster import
+
+`POST /students/import` (ADMIN, TECH_STAFF), `multipart/form-data` with the CSV in a `file`
+field. Query flags: `dryRun=true` (validate and report, save nothing), `strict=true` (any bad
+row rejects the whole file with 422). Max 2 MB and 5000 rows. UTF-8 (BOM, CRLF and quoted
+commas are fine). See `docs/sample-roster.csv`.
+
+Header (case-insensitive, all required, no other columns accepted):
+`student_no,first_name,last_name,section_code,program,year_level,school_year`.
+`school_year` looks like `2026-2027`. Students are upserted by `student_no`; the section is
+found by `section_code` + `school_year` or created. Bad rows are skipped and listed in
+`errors` with their line number and a stable `code` (`ROW_*`); file-level problems are a
+400 with a `CSV_*` code.
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" -F file=@docs/sample-roster.csv \
+  "http://localhost:8080/students/import?dryRun=true"
+```
