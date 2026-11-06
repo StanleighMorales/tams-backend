@@ -32,9 +32,11 @@ public static class StudentEndpoints
         students.MapPut("/{id:guid}", UpdateStudent).RequireRoles(Writers);
         students.MapDelete("/{id:guid}", DeleteStudent).RequireRoles(Writers);
         students.MapPost("/{id:guid}/restore", RestoreStudent).RequireRoles(Roles.Admin);
-        students.MapPost("/import", ImportRoster).RequireRoles(Writers)
+        // PRD 6.3 / TAMS-35: the literal route is POST /students:import (a group prefix would insert a slash).
+        app.MapPost("/students:import", ImportRoster).RequireRoles(Writers)
             .WithMetadata(new RequestSizeLimitAttribute(RosterImport.MaxBytes + 64 * 1024))
             .Accepts<IFormFile>("multipart/form-data")
+            .WithTags("Students")
             .WithSummary("Import a student roster CSV (multipart field 'file').");
         return app;
     }

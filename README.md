@@ -98,7 +98,7 @@ usually easier.
 
 ## Student roster import
 
-`POST /students/import` (ADMIN, TECH_STAFF), `multipart/form-data` with the CSV in a `file`
+`POST /students:import` (ADMIN, TECH_STAFF), `multipart/form-data` with the CSV in a `file`
 field. Query flags: `dryRun=true` (validate and report, save nothing), `strict=true` (any bad
 row rejects the whole file with 422). Max 2 MB and 5000 rows. UTF-8 (BOM, CRLF and quoted
 commas are fine). See `docs/sample-roster.csv`.
@@ -112,5 +112,5 @@ found by `section_code` + `school_year` or created. Bad rows are skipped and lis
 
 ```bash
 curl -H "Authorization: Bearer $TOKEN" -F file=@docs/sample-roster.csv \
-  "http://localhost:8080/students/import?dryRun=true"
+  "http://localhost:8080/students:import?dryRun=true"
 ```
