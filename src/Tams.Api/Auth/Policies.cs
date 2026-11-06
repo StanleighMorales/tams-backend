@@ -21,8 +21,10 @@ public static class Policies
 
     // Routes that may be anonymous (matched without the optional /api prefix). Single source of truth
     // for the coverage guard; endpoints must still opt in with .AllowAnonymous().
+    // /kiosk/* is device traffic: the station is identified by station_code and checked per route
+    // (PRD 6.2, 10.2), not by a user JWT.
     public static readonly string[] AnonymousRoutes =
-        ["/health", "/auth/login", "/auth/refresh", "/openapi", "/scalar"];
+        ["/health", "/auth/login", "/auth/refresh", "/openapi", "/scalar", "/kiosk"];
 
     public static IServiceCollection AddTamsPolicies(this IServiceCollection services) =>
         services.AddAuthorization(o =>

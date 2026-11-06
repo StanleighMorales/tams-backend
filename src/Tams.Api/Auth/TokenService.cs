@@ -46,6 +46,8 @@ public class TokenService(IOptions<JwtOptions> options, TimeProvider clock)
                 ["sub"] = user.Id.ToString(),
                 ["email"] = user.Email!,
                 ["role"] = RoleClaim(user.Role),
+                // String "true"/"false": the EventCoordinator policy matches it as a claim value.
+                [TamsClaims.EventCoordinator] = user.IsEventCoordinator ? "true" : "false",
                 ["jti"] = Guid.NewGuid().ToString(),
             },
         });

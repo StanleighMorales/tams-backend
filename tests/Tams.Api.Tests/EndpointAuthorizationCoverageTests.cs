@@ -16,6 +16,7 @@ public class EndpointAuthorizationCoverageTests : IClassFixture<WebApplicationFa
         _factory = factory.WithWebHostBuilder(b => b
             .UseEnvironment("Testing")
             .UseSetting("ConnectionStrings:Default", "Host=localhost;Database=unused;Username=x;Password=x")
+            .UseSetting("Jwt:Key", new string('k', 48)) // TAMS-31 fails fast without a signing key
             .UseSetting("Docs:Enabled", "true"));
 
     [Fact]

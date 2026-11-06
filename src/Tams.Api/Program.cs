@@ -45,6 +45,8 @@ app.MapAssetEndpoints();
 app.MapStudentEndpoints();
 app.MapEnrollmentEndpoints();
 app.MapQrEndpoints();
+app.MapFacilityEndpoints();
+app.MapSettingsEndpoints();
 
 // Compose healthcheck polls this, and it is the first thing to check after a deploy.
 app.MapGet("/health", async (TamsDbContext db, ILogger<Program> logger, CancellationToken ct) =>
@@ -66,9 +68,5 @@ app.MapGet("/health", async (TamsDbContext db, ILogger<Program> logger, Cancella
 }).AllowAnonymous();
 
 if (app.Environment.IsDevelopment()) AuthorizationCoverage.LogViolations(app); // keep after the last Map* call
-
-app.MapFacilityEndpoints();
-
-app.MapSettingsEndpoints();
 
 app.Run();
