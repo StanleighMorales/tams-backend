@@ -18,6 +18,8 @@ public class CheckoutSession
     public Guid? PhotoFileId { get; set; }
     public Guid? DestinationRoomId { get; set; }
     public short? ClassLengthMinutes { get; set; }
+    // ENROLLMENT sessions only: which finger is being enrolled (0 to 9).
+    public short? FingerIndex { get; set; }
     public short FingerprintAttempts { get; set; }
     [Column(TypeName = "jsonb")] public string LcdLines { get; set; } = "[]";
     [MaxLength(50)] public string? FailureCode { get; set; }
