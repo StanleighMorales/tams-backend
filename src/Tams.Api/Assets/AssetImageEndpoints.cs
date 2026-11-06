@@ -76,7 +76,7 @@ static class AssetImageEndpoints
             asset.ImageFileId = media.Id;
             asset.UpdatedAt = DateTimeOffset.UtcNow;
             if (old is not null) db.MediaFiles.Remove(old);
-            AssetAudit.Add(db, http, "ASSET_IMAGE_SET", "Asset", asset.Id,
+            AssetAudit.Add(db, http, "ASSET_IMAGE_SET", "asset", asset.Id,
                 new { imageFileId = old?.Id }, new { imageFileId = media.Id, media.MimeType, media.SizeBytes, media.Sha256 });
             await db.SaveChangesAsync(ct);
         }
@@ -111,7 +111,7 @@ static class AssetImageEndpoints
         asset.ImageFileId = null;
         asset.UpdatedAt = DateTimeOffset.UtcNow;
         if (media is not null) db.MediaFiles.Remove(media);
-        AssetAudit.Add(db, http, "ASSET_IMAGE_REMOVED", "Asset", asset.Id, new { imageFileId = imageId }, null);
+        AssetAudit.Add(db, http, "ASSET_IMAGE_REMOVED", "asset", asset.Id, new { imageFileId = imageId }, null);
         await db.SaveChangesAsync(ct);
         if (media is not null) TryDelete(Path.Combine(Root(cfg), media.StoragePath));
         return Results.NoContent();

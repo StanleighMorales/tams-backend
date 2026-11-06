@@ -112,7 +112,7 @@ public static class StudentEndpoints
             SchoolYear = b.SchoolYear!, AdviserUserId = b.AdviserUserId,
         };
         db.Sections.Add(s);
-        Audit(db, http, "SECTION_CREATE", "Section", s.Id, after: SectionDto(s));
+        Audit(db, http, "SECTION_CREATE", "section", s.Id, after: SectionDto(s));
         try { await db.SaveChangesAsync(ct); }
         catch (DbUpdateException ex) when (IsUniqueViolation(ex))
         {
@@ -137,7 +137,7 @@ public static class StudentEndpoints
         s.YearLevel = b.YearLevel!.Value;
         s.SchoolYear = b.SchoolYear!;
         s.AdviserUserId = b.AdviserUserId;
-        Audit(db, http, "SECTION_UPDATE", "Section", s.Id, before, SectionDto(s));
+        Audit(db, http, "SECTION_UPDATE", "section", s.Id, before, SectionDto(s));
         try { await db.SaveChangesAsync(ct); }
         catch (DbUpdateException ex) when (IsUniqueViolation(ex))
         {
@@ -230,7 +230,7 @@ public static class StudentEndpoints
         if (b.Status is { } st) s.Status = st;
         s.UpdatedAt = DateTimeOffset.UtcNow;
 
-        Audit(db, http, "STUDENT_UPDATE", "Student", s.Id, before, StudentAudit(s));
+        Audit(db, http, "STUDENT_UPDATE", "student", s.Id, before, StudentAudit(s));
         try { await db.SaveChangesAsync(ct); }
         catch (DbUpdateException ex) when (IsUniqueViolation(ex))
         {
@@ -245,7 +245,7 @@ public static class StudentEndpoints
         if (s is null) return Problems.NotFound("STUDENT_NOT_FOUND", "Student not found.");
         var before = StudentAudit(s);
         s.DeletedAt = s.UpdatedAt = DateTimeOffset.UtcNow;
-        Audit(db, http, "STUDENT_DELETE", "Student", s.Id, before, StudentAudit(s));
+        Audit(db, http, "STUDENT_DELETE", "student", s.Id, before, StudentAudit(s));
         await db.SaveChangesAsync(ct);
         return Results.NoContent();
     }
@@ -264,7 +264,7 @@ public static class StudentEndpoints
         var before = StudentAudit(s);
         s.DeletedAt = null;
         s.UpdatedAt = DateTimeOffset.UtcNow;
-        Audit(db, http, "STUDENT_RESTORE", "Student", s.Id, before, StudentAudit(s));
+        Audit(db, http, "STUDENT_RESTORE", "student", s.Id, before, StudentAudit(s));
         await db.SaveChangesAsync(ct);
         return await GetStudent(id, db, http.User, ct);
     }
@@ -333,7 +333,7 @@ public static class StudentEndpoints
                 if (!(isStrict && errors.Count > 0) && !isDry)
                 {
                     // Counts only; no student data goes into the log.
-                    Audit(db, http, "STUDENT_ROSTER_IMPORT", "StudentImport", importId, after: new
+                    Audit(db, http, "STUDENT_ROSTER_IMPORT", "student_import", importId, after: new
                     {
                         rows = dataRows.Count, created, updated, unchanged,
                         skipped = errors.Count, sectionsCreated, strict = isStrict,

@@ -323,7 +323,7 @@ public static partial class UserEndpoints
         {
             ActorUserId = CurrentUserId(http),
             Action = action,
-            EntityType = "User",
+            EntityType = "user",
             EntityId = entityId,
             Before = before,
             After = after,

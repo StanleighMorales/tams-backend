@@ -110,7 +110,7 @@ static class AssetEndpoints
             UpdatedAt = DateTimeOffset.UtcNow,
         };
         db.Assets.Add(asset);
-        AssetAudit.Add(db, http, "ASSET_CREATED", "Asset", asset.Id, null, AssetDto.From(asset));
+        AssetAudit.Add(db, http, "ASSET_CREATED", "asset", asset.Id, null, AssetDto.From(asset));
         if (await TrySave(db, ct) is { } conflict) return conflict;
         return Results.Created($"/assets/{asset.Id}", AssetDto.From(asset));
     }
@@ -158,7 +158,7 @@ static class AssetEndpoints
         asset.Notes = Clean(req.Notes);
         asset.UpdatedAt = DateTimeOffset.UtcNow;
 
-        AssetAudit.Add(db, http, "ASSET_UPDATED", "Asset", asset.Id, before, AssetDto.From(asset));
+        AssetAudit.Add(db, http, "ASSET_UPDATED", "asset", asset.Id, before, AssetDto.From(asset));
         if (await TrySave(db, ct) is { } conflict) return conflict;
         return Results.Ok(AssetDto.From(asset));
     }
@@ -171,7 +171,7 @@ static class AssetEndpoints
 
         var before = AssetDto.From(asset);
         asset.DeletedAt = asset.UpdatedAt = DateTimeOffset.UtcNow;
-        AssetAudit.Add(db, http, "ASSET_DELETED", "Asset", asset.Id, before, AssetDto.From(asset));
+        AssetAudit.Add(db, http, "ASSET_DELETED", "asset", asset.Id, before, AssetDto.From(asset));
         await db.SaveChangesAsync(ct);
         return Results.NoContent();
     }
@@ -195,7 +195,7 @@ static class AssetEndpoints
         var before = AssetDto.From(asset);
         asset.DeletedAt = null;
         asset.UpdatedAt = DateTimeOffset.UtcNow;
-        AssetAudit.Add(db, http, "ASSET_RESTORED", "Asset", asset.Id, before, AssetDto.From(asset));
+        AssetAudit.Add(db, http, "ASSET_RESTORED", "asset", asset.Id, before, AssetDto.From(asset));
         if (await TrySave(db, ct, restore: true) is { } conflict) return conflict;
         return Results.Ok(AssetDto.From(asset));
     }

@@ -22,7 +22,7 @@ public static class EnrollmentEndpoints
 
     public static IEndpointRouteBuilder MapEnrollmentEndpoints(this IEndpointRouteBuilder app)
     {
-        var api = app.MapGroup("/api");
+        var api = app.MapGroup(""); // the global /api PathBase is applied in Program.cs
 
         // Staff routes (PRD FR-9.4: admin-initiated enrollment at the kiosk).
         var staff = api.MapGroup("/enrollment/sessions").WithTags("Enrollment");

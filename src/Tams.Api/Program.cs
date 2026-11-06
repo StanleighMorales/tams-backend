@@ -26,6 +26,11 @@ builder.Services.AddTamsSettings();
 
 var app = builder.Build();
 
+// PRD 6.3: endpoints live under /api. PathBase strips the prefix, so /api/x and /x both route,
+// which keeps the Compose healthcheck and local curl working. UseRouting must come after it.
+app.UsePathBase("/api");
+app.UseRouting();
+
 app.UseTamsProblemDetails();
 app.UseTamsAuth();
 app.MapTamsDocs();

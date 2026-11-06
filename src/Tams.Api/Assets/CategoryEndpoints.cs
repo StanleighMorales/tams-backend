@@ -40,7 +40,7 @@ static class CategoryEndpoints
                 Id = Guid.NewGuid(), Name = name, Description = req.Description?.Trim(), IsBorrowable = req.IsBorrowable ?? false,
             };
             db.AssetCategories.Add(cat);
-            AssetAudit.Add(db, http, "CATEGORY_CREATED", "Category", cat.Id, null, cat);
+            AssetAudit.Add(db, http, "CATEGORY_CREATED", "asset_category", cat.Id, null, cat);
             try { await db.SaveChangesAsync(ct); }
             catch (DbUpdateException ex) when (AssetAudit.IsUniqueViolation(ex))
             {
@@ -64,7 +64,7 @@ static class CategoryEndpoints
             cat.Name = name;
             cat.Description = req.Description?.Trim();
             cat.IsBorrowable = req.IsBorrowable ?? cat.IsBorrowable;
-            AssetAudit.Add(db, http, "CATEGORY_UPDATED", "Category", cat.Id, before,
+            AssetAudit.Add(db, http, "CATEGORY_UPDATED", "asset_category", cat.Id, before,
                 new { cat.Name, cat.Description, cat.IsBorrowable });
             try { await db.SaveChangesAsync(ct); }
             catch (DbUpdateException ex) when (AssetAudit.IsUniqueViolation(ex))
@@ -85,7 +85,7 @@ static class CategoryEndpoints
                 return Problems.Conflict("CATEGORY_IN_USE", "Category still has assets (deleted assets count). Move or remove them first.");
 
             db.AssetCategories.Remove(cat);
-            AssetAudit.Add(db, http, "CATEGORY_DELETED", "Category", cat.Id, cat, null);
+            AssetAudit.Add(db, http, "CATEGORY_DELETED", "asset_category", cat.Id, cat, null);
             await db.SaveChangesAsync(ct);
             return Results.NoContent();
         }).RequireRoles(Roles.Admin, Roles.TechStaff);

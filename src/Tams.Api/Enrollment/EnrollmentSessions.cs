@@ -129,7 +129,7 @@ public static class EnrollmentSessions
             ActorUserId = actorUserId,
             ActorStationId = actorStationId,
             Action = action,
-            EntityType = "Student",
+            EntityType = "student",
             EntityId = studentId,
             Before = beforeJson,
             After = afterJson,
