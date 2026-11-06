@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Tams.Api.Auth;
 using Tams.Api.Data;
 using Tams.Api.Http;
+using Tams.Api.Users;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -32,6 +33,7 @@ if (app.Environment.IsDevelopment())
 
 await app.SeedDevelopmentAdminAsync();
 app.MapAuthEndpoints();
+app.MapUserEndpoints();
 
 // Compose healthcheck polls this, and it is the first thing to check after a deploy.
 app.MapGet("/health", async (TamsDbContext db, ILogger<Program> logger, CancellationToken ct) =>
