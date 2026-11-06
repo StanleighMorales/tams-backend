@@ -93,7 +93,7 @@ public static partial class UserEndpoints
         var email = req.Email!.Trim();
         var employeeNo = req.EmployeeNo!.Trim();
         if (await EmailTaken(db, email, null, ct)) return EmailTakenProblem();
-        if (await db.Users.AnyAsync(u => u.EmployeeNo == employeeNo, ct)) return EmployeeNoTakenProblem();
+        if (await db.Users.AnyAsync(u => u.DeletedAt == null && u.EmployeeNo == employeeNo, ct)) return EmployeeNoTakenProblem();
         if (req.DefaultRoomId is { } roomId && await RoomMissing(db, roomId, ct)) return RoomProblem();
 
         var now = DateTimeOffset.UtcNow;
@@ -134,7 +134,7 @@ public static partial class UserEndpoints
         var email = req.Email!.Trim();
         var employeeNo = req.EmployeeNo!.Trim();
         if (await EmailTaken(db, email, id, ct)) return EmailTakenProblem();
-        if (await db.Users.AnyAsync(u => u.EmployeeNo == employeeNo && u.Id != id, ct)) return EmployeeNoTakenProblem();
+        if (await db.Users.AnyAsync(u => u.DeletedAt == null && u.EmployeeNo == employeeNo && u.Id != id, ct)) return EmployeeNoTakenProblem();
         if (req.DefaultRoomId is { } roomId && await RoomMissing(db, roomId, ct)) return RoomProblem();
 
         if (role != user.Role)
@@ -214,8 +214,8 @@ public static partial class UserEndpoints
         var user = await db.Users.FirstOrDefaultAsync(u => u.Id == id && u.DeletedAt != null, ct);
         if (user is null) return NotFound();
 
-        // Decision #7: check before clearing the flag. The indexes currently cover deleted rows too,
-        // so this guards against a future partial unique index and gives a clearer error than a 23505.
+        // Decision #7: check before clearing the flag. The unique indexes are partial (live rows only),
+        // so a live account may have taken the email or employee number since this one was deleted.
         var conflicts = new List<string>();
         if (await db.Users.AnyAsync(u => u.Id != id && u.DeletedAt == null && u.NormalizedEmail == user.NormalizedEmail, ct))
             conflicts.Add("email");
@@ -261,11 +261,11 @@ public static partial class UserEndpoints
     static IResult EmployeeNoTakenProblem() => Problems.Conflict("EMPLOYEE_NO_TAKEN", "Another account already uses this employee number.");
     static IResult RoomProblem() => Problems.Validation(new Dictionary<string, string[]> { ["defaultRoomId"] = ["Room does not exist."] });
 
-    // Includes soft-deleted rows because the unique index does.
+    // Live rows only: the unique indexes are partial (WHERE deleted_at IS NULL).
     static Task<bool> EmailTaken(TamsDbContext db, string email, Guid? exceptId, CancellationToken ct)
     {
         var normalized = email.ToUpperInvariant();
-        return db.Users.AnyAsync(u => u.NormalizedEmail == normalized && u.Id != exceptId, ct);
+        return db.Users.AnyAsync(u => u.DeletedAt == null && u.NormalizedEmail == normalized && u.Id != exceptId, ct);
     }
 
     static async Task<bool> RoomMissing(TamsDbContext db, Guid roomId, CancellationToken ct) =>

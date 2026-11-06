@@ -122,7 +122,7 @@ public static class StationEndpoints
             return Support.BadEnum<RecordStatus>("status");
 
         var code = body.StationCode!.Trim().ToUpperInvariant();
-        var clash = await db.Stations.Where(s => s.StationCode == code).Select(s => new { s.DeletedAt }).FirstOrDefaultAsync(ct);
+        var clash = await db.Stations.Where(s => s.DeletedAt == null && s.StationCode == code).Select(s => new { s.DeletedAt }).FirstOrDefaultAsync(ct);
         if (clash is not null) return CodeTaken(code, clash.DeletedAt != null);
 
         var roomError = await CheckRoom(db, body.RoomId!.Value, type, ct);
@@ -167,7 +167,7 @@ public static class StationEndpoints
             var code = body.StationCode.Trim().ToUpperInvariant();
             if (code != s.StationCode)
             {
-                var clash = await db.Stations.Where(x => x.StationCode == code).Select(x => new { x.DeletedAt }).FirstOrDefaultAsync(ct);
+                var clash = await db.Stations.Where(x => x.DeletedAt == null && x.StationCode == code).Select(x => new { x.DeletedAt }).FirstOrDefaultAsync(ct);
                 if (clash is not null) return CodeTaken(code, clash.DeletedAt != null);
                 s.StationCode = code;
             }
@@ -209,7 +209,7 @@ public static class StationEndpoints
         if (s is null) return Problems.NotFound("STATION_NOT_FOUND", "Station not found.");
         if (s.DeletedAt is null) return Problems.Conflict("NOT_DELETED", "Station is not deleted.");
 
-        // Defensive: stations.station_code is uniquely indexed over deleted rows too.
+        // station_code is uniquely indexed over live rows only, so a live station may have taken the code.
         if (await db.Stations.AnyAsync(x => x.StationCode == s.StationCode && x.Id != id && x.DeletedAt == null, ct))
             return Problems.Conflict("RESTORE_CONFLICT", $"Another station already uses code '{s.StationCode}'.");
         // A station cannot come back bound to a room that is itself deleted.

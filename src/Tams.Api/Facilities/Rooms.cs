@@ -76,7 +76,7 @@ public static class RoomEndpoints
             return Support.BadEnum<RecordStatus>("status");
 
         var code = body.Code!.Trim().ToUpperInvariant();
-        var clash = await db.Rooms.Where(r => r.Code == code).Select(r => new { r.DeletedAt }).FirstOrDefaultAsync(ct);
+        var clash = await db.Rooms.Where(r => r.DeletedAt == null && r.Code == code).Select(r => new { r.DeletedAt }).FirstOrDefaultAsync(ct);
         if (clash is not null) return CodeTaken(code, clash.DeletedAt != null);
 
         var now = DateTimeOffset.UtcNow;
@@ -117,7 +117,7 @@ public static class RoomEndpoints
             var code = body.Code.Trim().ToUpperInvariant();
             if (code != room.Code)
             {
-                var clash = await db.Rooms.Where(r => r.Code == code).Select(r => new { r.DeletedAt }).FirstOrDefaultAsync(ct);
+                var clash = await db.Rooms.Where(r => r.DeletedAt == null && r.Code == code).Select(r => new { r.DeletedAt }).FirstOrDefaultAsync(ct);
                 if (clash is not null) return CodeTaken(code, clash.DeletedAt != null);
                 room.Code = code;
             }
@@ -170,7 +170,7 @@ public static class RoomEndpoints
         if (room is null) return Problems.NotFound("ROOM_NOT_FOUND", "Room not found.");
         if (room.DeletedAt is null) return Problems.Conflict("NOT_DELETED", "Room is not deleted.");
 
-        // Defensive: rooms.code is uniquely indexed over deleted rows too, so a clash cannot exist today.
+        // rooms.code is uniquely indexed over live rows only, so a live room may have taken the code.
         if (await db.Rooms.AnyAsync(r => r.Code == room.Code && r.Id != id && r.DeletedAt == null, ct))
             return Problems.Conflict("RESTORE_CONFLICT", $"Another room already uses code '{room.Code}'.");
 
