@@ -8,6 +8,7 @@ using Tams.Api.Http;
 using Tams.Api.Users;
 using Tams.Api.Students;
 using Tams.Api.Settings;
+using Tams.Api.Qr;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -43,6 +44,7 @@ app.MapUserEndpoints();
 app.MapAssetEndpoints();
 app.MapStudentEndpoints();
 app.MapEnrollmentEndpoints();
+app.MapQrEndpoints();
 
 // Compose healthcheck polls this, and it is the first thing to check after a deploy.
 app.MapGet("/health", async (TamsDbContext db, ILogger<Program> logger, CancellationToken ct) =>
