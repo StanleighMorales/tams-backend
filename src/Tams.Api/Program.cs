@@ -7,6 +7,7 @@ using Tams.Api.Enrollment;
 using Tams.Api.Http;
 using Tams.Api.Users;
 using Tams.Api.Students;
+using Tams.Api.Settings;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -20,6 +21,7 @@ var connectionString = builder.Configuration.GetConnectionString("Default")
         "ConnectionStrings__Default is not set. Copy .env.example to .env and set POSTGRES_PASSWORD.");
 
 builder.Services.AddDbContext<TamsDbContext>(o => o.UseNpgsql(connectionString, PgEnums.MapAll));
+builder.Services.AddTamsSettings();
 
 var app = builder.Build();
 
@@ -64,5 +66,7 @@ app.MapGet("/health", async (TamsDbContext db, ILogger<Program> logger, Cancella
 if (app.Environment.IsDevelopment()) AuthorizationCoverage.LogViolations(app); // keep after the last Map* call
 
 app.MapFacilityEndpoints();
+
+app.MapSettingsEndpoints();
 
 app.Run();
