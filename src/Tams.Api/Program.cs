@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Tams.Api.Auth;
 using Tams.Api.Assets;
+using Tams.Api.Auditing;
 using Tams.Api.Data;
 using Tams.Api.Facilities;
 using Tams.Api.Enrollment;
@@ -52,6 +53,7 @@ app.MapEnrollmentEndpoints();
 app.MapQrEndpoints();
 app.MapFacilityEndpoints();
 app.MapSettingsEndpoints();
+app.MapAuditLogEndpoints();
 
 // Compose healthcheck polls this, and it is the first thing to check after a deploy.
 app.MapGet("/health", async (TamsDbContext db, ILogger<Program> logger, CancellationToken ct) =>
