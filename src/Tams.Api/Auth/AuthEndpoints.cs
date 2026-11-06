@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Tams.Api.Common;
 using Tams.Api.Data;
 using Tams.Api.Data.Entities;
 using Tams.Api.Http;
@@ -14,8 +15,6 @@ public record ChangePasswordRequest(string? CurrentPassword, string? NewPassword
 
 public static class AuthEndpoints
 {
-    const int MinPasswordLength = 8;
-    const int MaxPasswordLength = 128;
 
     public static IEndpointRouteBuilder MapAuthEndpoints(this IEndpointRouteBuilder app)
     {
@@ -116,10 +115,8 @@ public static class AuthEndpoints
         var errors = new Dictionary<string, string[]>();
         if (string.IsNullOrEmpty(req.CurrentPassword)) errors["currentPassword"] = ["Current password is required."];
         if (string.IsNullOrEmpty(req.NewPassword)) errors["newPassword"] = ["New password is required."];
-        else if (req.NewPassword.Length is < MinPasswordLength or > MaxPasswordLength)
-            errors["newPassword"] = [$"New password must be {MinPasswordLength} to {MaxPasswordLength} characters."];
-        else if (req.NewPassword == req.CurrentPassword)
-            errors["newPassword"] = ["New password must differ from the current password."];
+        else if (PasswordRules.Check(req.NewPassword, req.CurrentPassword) is { } passwordError)
+            errors["newPassword"] = [passwordError];
         if (errors.Count > 0) return Problems.Validation(errors);
 
         var user = await CurrentUser(http, db, ct);
