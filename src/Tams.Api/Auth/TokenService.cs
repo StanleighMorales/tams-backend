@@ -1,5 +1,3 @@
-using System.Buffers.Text;
-using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.JsonWebTokens;
@@ -10,10 +8,8 @@ using Tams.Api.Data.Entities;
 namespace Tams.Api.Auth;
 
 /// <summary>
-/// Access tokens are short-lived JWTs (sub = user id, role = a Roles constant).
-/// Refresh tokens are stateless: userId.expiryUnix.HMAC over those plus the user's
-/// SecurityStamp. Schema v1 has no refresh-token table, so rotating the SecurityStamp
-/// (logout, change-password) revokes every outstanding refresh token for that user at once.
+/// Access tokens are short-lived JWTs (sub = user id, role = a Roles constant). Refresh tokens
+/// are opaque and stored hashed in refresh_tokens; see <see cref="RefreshTokens"/>.
 /// </summary>
 public class TokenService(IOptions<JwtOptions> options, TimeProvider clock)
 {
@@ -28,7 +24,7 @@ public class TokenService(IOptions<JwtOptions> options, TimeProvider clock)
         _ => throw new ArgumentOutOfRangeException(nameof(role)),
     };
 
-    public TokenPair Issue(User user)
+    public TokenPair Issue(User user, string refreshToken)
     {
         var now = clock.GetUtcNow();
         var accessExpires = now.AddMinutes(_o.AccessMinutes);
@@ -52,34 +48,8 @@ public class TokenService(IOptions<JwtOptions> options, TimeProvider clock)
             },
         });
 
-        var payload = $"{user.Id:N}.{now.AddDays(_o.RefreshDays).ToUnixTimeSeconds()}";
-        var refresh = $"{payload}.{Base64Url.EncodeToString(Sign(payload, user.SecurityStamp))}";
-        return new TokenPair(access, accessExpires, refresh);
+        return new TokenPair(access, accessExpires, refreshToken);
     }
-
-    /// <summary>Extracts the user id from an unverified refresh token so the caller can load the user.</summary>
-    public static Guid? PeekUserId(string token)
-    {
-        var parts = token.Split('.');
-        return parts.Length == 3 && Guid.TryParseExact(parts[0], "N", out var id) ? id : null;
-    }
-
-    /// <summary>True when the token is unexpired, signed by us and matches the user's current stamp.</summary>
-    public bool ValidateRefresh(string token, User user)
-    {
-        var parts = token.Split('.');
-        if (parts.Length != 3 || !Guid.TryParseExact(parts[0], "N", out var id) || id != user.Id) return false;
-        if (!long.TryParse(parts[1], out var exp) || DateTimeOffset.FromUnixTimeSeconds(exp) <= clock.GetUtcNow()) return false;
-        try
-        {
-            return CryptographicOperations.FixedTimeEquals(
-                Base64Url.DecodeFromChars(parts[2]), Sign($"{parts[0]}.{parts[1]}", user.SecurityStamp));
-        }
-        catch (FormatException) { return false; }
-    }
-
-    byte[] Sign(string payload, string? stamp) =>
-        HMACSHA256.HashData(Encoding.UTF8.GetBytes("refresh:" + _o.Key), Encoding.UTF8.GetBytes($"{payload}|{stamp}"));
 }
 
 public record TokenPair(string AccessToken, DateTimeOffset AccessTokenExpiresAt, string RefreshToken);

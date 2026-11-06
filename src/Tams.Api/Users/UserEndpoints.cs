@@ -153,7 +153,11 @@ public static partial class UserEndpoints
         user.EmployeeNo = employeeNo;
         user.FirstName = req.FirstName!.Trim();
         user.LastName = req.LastName!.Trim();
-        if (role != user.Role) user.SecurityStamp = Guid.NewGuid().ToString("N");
+        if (role != user.Role)
+        {
+            user.SecurityStamp = Guid.NewGuid().ToString("N");
+            await RefreshTokens.RevokeAllAsync(db, user.Id, DateTimeOffset.UtcNow, ct);
+        }
         user.Role = role;
         user.IsEventCoordinator = req.IsEventCoordinator;
         user.DefaultRoomId = req.DefaultRoomId;
@@ -184,6 +188,7 @@ public static partial class UserEndpoints
             user.Status = status;
             user.UpdatedAt = DateTimeOffset.UtcNow;
             user.SecurityStamp = Guid.NewGuid().ToString("N");
+            await RefreshTokens.RevokeAllAsync(db, user.Id, user.UpdatedAt, ct);
             user.ConcurrencyStamp = Guid.NewGuid().ToString("N");
             Audit(db, http, action, id, before, Snapshot(user));
         }
@@ -204,6 +209,7 @@ public static partial class UserEndpoints
         user.DeletedAt = DateTimeOffset.UtcNow;
         user.UpdatedAt = user.DeletedAt.Value;
         user.SecurityStamp = Guid.NewGuid().ToString("N");
+        await RefreshTokens.RevokeAllAsync(db, user.Id, user.UpdatedAt, ct);
         user.ConcurrencyStamp = Guid.NewGuid().ToString("N");
         Audit(db, http, "USER_DELETE", id, before, Snapshot(user));
         return await Save(db, ct, () => Results.NoContent());
@@ -240,7 +246,8 @@ public static partial class UserEndpoints
 
         var temp = GeneratePassword();
         user.PasswordHash = Hasher.HashPassword(user, temp);
-        user.SecurityStamp = Guid.NewGuid().ToString("N"); // invalidates sessions keyed on the stamp
+        user.SecurityStamp = Guid.NewGuid().ToString("N");
+        await RefreshTokens.RevokeAllAsync(db, user.Id, DateTimeOffset.UtcNow, ct); // sign the user out everywhere
         user.AccessFailedCount = 0;
         user.LockoutEnd = null;
         user.UpdatedAt = DateTimeOffset.UtcNow;
