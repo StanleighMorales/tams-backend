@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Tams.Api.Auth;
 using Tams.Api.Assets;
 using Tams.Api.Data;
+using Tams.Api.Facilities;
 using Tams.Api.Http;
 using Tams.Api.Users;
 
@@ -57,5 +58,7 @@ app.MapGet("/health", async (TamsDbContext db, ILogger<Program> logger, Cancella
 }).AllowAnonymous();
 
 if (app.Environment.IsDevelopment()) AuthorizationCoverage.LogViolations(app); // keep after the last Map* call
+
+app.MapFacilityEndpoints();
 
 app.Run();
