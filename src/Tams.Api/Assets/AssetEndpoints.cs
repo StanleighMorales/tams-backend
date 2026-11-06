@@ -30,7 +30,7 @@ static class AssetEndpoints
 
     static async Task<IResult> List(
         HttpContext http, TamsDbContext db, CancellationToken ct,
-        Guid? categoryId, string? status, string? type, string? q,
+        Guid? categoryId, Guid? homeRoomId, string? status, string? type, string? q, string? sort,
         bool includeDeleted = false, int page = 1, int pageSize = 25)
     {
         if (includeDeleted && !http.User.IsInRole(Roles.Admin) && !http.User.IsInRole(Roles.TechStaff))
@@ -49,6 +49,9 @@ static class AssetEndpoints
             if (EnumText.TryParse<AssetType>(type, out var t)) typeFilter = t;
             else errors["type"] = ["Unknown asset type (BORROWABLE or FIXED)."];
         }
+        var sortKey = sort?.TrimStart('-').ToLowerInvariant();
+        if (sortKey is not (null or "" or "assetcode" or "name" or "createdat"))
+            errors["sort"] = ["Must be assetCode, name or createdAt, optionally prefixed with '-'."];
         if (errors.Count > 0) return Problems.Validation(errors);
 
         page = Math.Max(page, 1);
@@ -57,22 +60,37 @@ static class AssetEndpoints
         var query = db.Assets.AsNoTracking().AsQueryable();
         if (!includeDeleted) query = query.Where(a => a.DeletedAt == null);
         if (categoryId is not null) query = query.Where(a => a.CategoryId == categoryId);
+        if (homeRoomId is not null) query = query.Where(a => a.HomeRoomId == homeRoomId);
         if (statusFilter is not null) query = query.Where(a => a.Status == statusFilter);
         if (typeFilter is not null) query = query.Where(a => a.Type == typeFilter);
         if (!string.IsNullOrWhiteSpace(q))
         {
             var like = "%" + q.Trim().Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_") + "%";
-            query = query.Where(a => EF.Functions.ILike(a.AssetCode, like) || EF.Functions.ILike(a.Name, like));
+            query = query.Where(a => EF.Functions.ILike(a.AssetCode, like) || EF.Functions.ILike(a.Name, like)
+                || (a.RfidTagUid != null && EF.Functions.ILike(a.RfidTagUid, like)));
         }
 
         var total = await query.CountAsync(ct);
-        var items = await query.OrderBy(a => a.AssetCode).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
+        var desc = sort?.StartsWith('-') == true;
+        query = (sortKey, desc) switch
+        {
+            ("name", false) => query.OrderBy(a => a.Name).ThenBy(a => a.AssetCode),
+            ("name", true) => query.OrderByDescending(a => a.Name).ThenBy(a => a.AssetCode),
+            ("createdat", false) => query.OrderBy(a => a.CreatedAt).ThenBy(a => a.AssetCode),
+            ("createdat", true) => query.OrderByDescending(a => a.CreatedAt).ThenBy(a => a.AssetCode),
+            (_, true) => query.OrderByDescending(a => a.AssetCode),
+            _ => query.OrderBy(a => a.AssetCode),
+        };
+        var items = await query.Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
         return Results.Ok(new PagedResult<AssetDto>(items.Select(AssetDto.From).ToList(), page, pageSize, total));
     }
 
-    static async Task<IResult> Get(Guid id, TamsDbContext db, CancellationToken ct)
+    static async Task<IResult> Get(Guid id, HttpContext http, TamsDbContext db, CancellationToken ct)
     {
-        var asset = await db.Assets.AsNoTracking().FirstOrDefaultAsync(a => a.Id == id && a.DeletedAt == null, ct);
+        // Deleted assets are only visible to those who may list them (same rule as rooms and stations).
+        var maySeeDeleted = http.User.IsInRole(Roles.Admin) || http.User.IsInRole(Roles.TechStaff);
+        var asset = await db.Assets.AsNoTracking()
+            .FirstOrDefaultAsync(a => a.Id == id && (maySeeDeleted || a.DeletedAt == null), ct);
         return asset is null ? NotFound() : Results.Ok(AssetDto.From(asset));
     }
 
@@ -230,6 +248,8 @@ static class AssetEndpoints
 
         if (uid is not null)
         {
+            if (await db.AuthCards.AnyAsync(c => c.CardUid == uid, ct))
+                return Problems.Conflict("TAG_ALREADY_ASSIGNED", $"UID {uid} is already registered as an authorization card.");
             var tagRow = await db.Assets.Where(a => a.Id != selfId && a.RfidTagUid == uid)
                 .Select(a => new { a.DeletedAt }).FirstOrDefaultAsync(ct);
             if (tagRow is not null)

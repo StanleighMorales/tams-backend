@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using Tams.Api.Auth;
+using Tams.Api.Common;
 using Tams.Api.Data;
 using Tams.Api.Data.Entities;
 using Tams.Api.Http;
@@ -17,7 +18,6 @@ namespace Tams.Api.Users;
 // Writes: ADMIN only. Schema-v1-decisions #4 (reset-password) and #7 (restore).
 public static partial class UserEndpoints
 {
-    const int MinPasswordLength = 8;
     static readonly PasswordHasher<User> Hasher = new();
 
     [GeneratedRegex(@"^[^@\s]+@[^@\s]+\.[^@\s]+$")]
@@ -86,8 +86,9 @@ public static partial class UserEndpoints
     static async Task<IResult> Create(CreateUserRequest req, TamsDbContext db, HttpContext http, CancellationToken ct)
     {
         var errors = Validate(req.Email, req.EmployeeNo, req.FirstName, req.LastName, req.Role, out var role);
-        if (string.IsNullOrEmpty(req.Password) || req.Password.Length < MinPasswordLength)
-            errors["password"] = [$"Must be at least {MinPasswordLength} characters."];
+        if (PasswordRules.Check(req.Password) is { } passwordError) errors["password"] = [passwordError];
+        if (role == UserRole.Custodian && req.IsEventCoordinator)
+            errors["isEventCoordinator"] = ["Custodians cannot be event coordinators."];
         if (errors.Count > 0) return Problems.Validation(errors);
 
         var email = req.Email!.Trim();
@@ -126,6 +127,8 @@ public static partial class UserEndpoints
     static async Task<IResult> Update(Guid id, UpdateUserRequest req, TamsDbContext db, HttpContext http, CancellationToken ct)
     {
         var errors = Validate(req.Email, req.EmployeeNo, req.FirstName, req.LastName, req.Role, out var role);
+        if (role == UserRole.Custodian && req.IsEventCoordinator)
+            errors["isEventCoordinator"] = ["Custodians cannot be event coordinators."];
         if (errors.Count > 0) return Problems.Validation(errors);
 
         var user = await db.Users.FirstOrDefaultAsync(u => u.Id == id && u.DeletedAt == null, ct);
