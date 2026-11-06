@@ -217,7 +217,7 @@ public static class StudentEndpoints
         var no = b.StudentNo?.Trim();
         if (no is not null && no != s.StudentNo)
         {
-            if (await db.Students.AnyAsync(x => x.StudentNo == no, ct))
+            if (await db.Students.AnyAsync(x => x.DeletedAt == null && x.StudentNo == no, ct))
                 return Problems.Conflict("STUDENT_NO_TAKEN", "Another student already has this student number.");
             s.StudentNo = no;
         }
@@ -258,8 +258,7 @@ public static class StudentEndpoints
         if (s is null) return Problems.NotFound("STUDENT_NOT_FOUND", "Student not found.");
         if (s.DeletedAt is null) return Problems.Conflict("NOT_DELETED", "Student is not deleted.");
 
-        // The unique index spans deleted rows too, so this cannot trip today; it keeps the
-        // contract (decision #7) if the index ever becomes partial on deleted_at.
+        // student_no is uniquely indexed over live rows only, so a live student may have taken it (decision #7).
         if (await db.Students.AnyAsync(x => x.Id != id && x.StudentNo == s.StudentNo && x.DeletedAt == null, ct))
             return Problems.Conflict("RESTORE_CONFLICT", "Cannot restore: another active student has this student_no (field: student_no).");
 

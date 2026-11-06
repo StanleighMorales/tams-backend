@@ -200,8 +200,7 @@ static class AssetEndpoints
         if (asset is null) return NotFound();
         if (asset.DeletedAt is null) return Problems.Conflict("ASSET_NOT_DELETED", "Asset is not deleted.");
 
-        // The unique indexes cover soft-deleted rows too, so a live clash is not expected today.
-        // Checked anyway so a future partial index (WHERE deleted_at IS NULL) cannot break restore.
+        // The unique indexes are partial (live rows only), so a live asset may now own the code or tag.
         if (await db.Assets.AnyAsync(a => a.Id != id && a.DeletedAt == null && a.AssetCode == asset.AssetCode, ct))
             return Problems.Conflict("RESTORE_CONFLICT", $"Cannot restore: asset_code '{asset.AssetCode}' is now used by another asset.");
         if (asset.RfidTagUid is not null
@@ -237,10 +236,10 @@ static class AssetEndpoints
         return null;
     }
 
-    /// <summary>409 when asset_code or rfid_tag_uid belongs to another row (deleted rows included).</summary>
+    /// <summary>409 when asset_code or rfid_tag_uid belongs to another live row (deleted rows do not block).</summary>
     static async Task<IResult?> Collision(TamsDbContext db, string code, string? uid, Guid? selfId, CancellationToken ct)
     {
-        var codeRow = await db.Assets.Where(a => a.Id != selfId && a.AssetCode == code)
+        var codeRow = await db.Assets.Where(a => a.DeletedAt == null && a.Id != selfId && a.AssetCode == code)
             .Select(a => new { a.DeletedAt }).FirstOrDefaultAsync(ct);
         if (codeRow is not null)
             return Problems.Conflict("ASSET_CODE_TAKEN",
@@ -250,7 +249,7 @@ static class AssetEndpoints
         {
             if (await db.AuthCards.AnyAsync(c => c.CardUid == uid, ct))
                 return Problems.Conflict("TAG_ALREADY_ASSIGNED", $"UID {uid} is already registered as an authorization card.");
-            var tagRow = await db.Assets.Where(a => a.Id != selfId && a.RfidTagUid == uid)
+            var tagRow = await db.Assets.Where(a => a.DeletedAt == null && a.Id != selfId && a.RfidTagUid == uid)
                 .Select(a => new { a.DeletedAt }).FirstOrDefaultAsync(ct);
             if (tagRow is not null)
                 return Problems.Conflict("TAG_ALREADY_ASSIGNED",

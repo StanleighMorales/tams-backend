@@ -274,8 +274,10 @@ namespace Tams.Api.Data.Migrations
                         .HasColumnName("category_id");
 
                     b.Property<AssetCondition>("Condition")
+                        .ValueGeneratedOnAdd()
                         .HasColumnType("asset_condition")
-                        .HasColumnName("condition");
+                        .HasColumnName("condition")
+                        .HasDefaultValueSql("'GOOD'::asset_condition");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .ValueGeneratedOnAdd()
@@ -329,8 +331,10 @@ namespace Tams.Api.Data.Migrations
                         .HasColumnName("serial_no");
 
                     b.Property<AssetStatus>("Status")
+                        .ValueGeneratedOnAdd()
                         .HasColumnType("asset_status")
-                        .HasColumnName("status");
+                        .HasColumnName("status")
+                        .HasDefaultValueSql("'IN_STORAGE'::asset_status");
 
                     b.Property<AssetType>("Type")
                         .HasColumnType("asset_type")
@@ -347,7 +351,8 @@ namespace Tams.Api.Data.Migrations
 
                     b.HasIndex("AssetCode")
                         .IsUnique()
-                        .HasDatabaseName("ix_assets_asset_code_uq");
+                        .HasDatabaseName("ix_assets_asset_code_uq")
+                        .HasFilter("deleted_at IS NULL");
 
                     b.HasIndex("CategoryId")
                         .HasDatabaseName("ix_assets_category_id");
@@ -363,9 +368,13 @@ namespace Tams.Api.Data.Migrations
 
                     b.HasIndex("RfidTagUid")
                         .IsUnique()
-                        .HasDatabaseName("ix_assets_rfid_tag_uid_uq");
+                        .HasDatabaseName("ix_assets_rfid_tag_uid_uq")
+                        .HasFilter("deleted_at IS NULL");
 
-                    b.ToTable("assets");
+                    b.ToTable("assets", t =>
+                        {
+                            t.HasCheckConstraint("ck_assets_borrowable_tag", "type <> 'BORROWABLE' OR rfid_tag_uid IS NOT NULL");
+                        });
                 });
 
             modelBuilder.Entity("Tams.Api.Data.Entities.AssetCategory", b =>
@@ -706,9 +715,15 @@ namespace Tams.Api.Data.Migrations
                         .HasColumnType("character varying(50)")
                         .HasColumnName("failure_code");
 
-                    b.Property<short>("FingerprintAttempts")
+                    b.Property<short?>("FingerIndex")
                         .HasColumnType("smallint")
-                        .HasColumnName("fingerprint_attempts");
+                        .HasColumnName("finger_index");
+
+                    b.Property<short>("FingerprintAttempts")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("smallint")
+                        .HasColumnName("fingerprint_attempts")
+                        .HasDefaultValueSql("0");
 
                     b.Property<Guid?>("InstructorUserId")
                         .HasColumnType("uuid")
@@ -716,8 +731,10 @@ namespace Tams.Api.Data.Migrations
 
                     b.Property<string>("LcdLines")
                         .IsRequired()
+                        .ValueGeneratedOnAdd()
                         .HasColumnType("jsonb")
-                        .HasColumnName("lcd_lines");
+                        .HasColumnName("lcd_lines")
+                        .HasDefaultValueSql("'[]'::jsonb");
 
                     b.Property<Guid?>("PhotoFileId")
                         .HasColumnType("uuid")
@@ -766,7 +783,18 @@ namespace Tams.Api.Data.Migrations
                     b.HasIndex("StudentId")
                         .HasDatabaseName("ix_checkout_sessions_student_id");
 
-                    b.ToTable("checkout_sessions");
+                    b.HasIndex(new[] { "StudentId" }, "ux_checkout_sessions_open_enrollment_student")
+                        .IsUnique()
+                        .HasFilter("type = 'ENROLLMENT' AND status IN ('AWAITING_FINGERPRINT','AWAITING_ASSET','AWAITING_PHOTO','AWAITING_APPROVAL','AWAITING_CONFIRM')");
+
+                    b.HasIndex(new[] { "StationId" }, "ux_checkout_sessions_open_station")
+                        .IsUnique()
+                        .HasFilter("status IN ('AWAITING_FINGERPRINT','AWAITING_ASSET','AWAITING_PHOTO','AWAITING_APPROVAL','AWAITING_CONFIRM')");
+
+                    b.ToTable("checkout_sessions", t =>
+                        {
+                            t.HasCheckConstraint("ck_checkout_sessions_finger_index", "finger_index IS NULL OR finger_index BETWEEN 0 AND 9");
+                        });
                 });
 
             modelBuilder.Entity("Tams.Api.Data.Entities.DeviceToken", b =>
@@ -1277,6 +1305,8 @@ namespace Tams.Api.Data.Migrations
                             t.HasCheckConstraint("ck_loans_class_length", "class_length_minutes IS NULL OR class_length_minutes BETWEEN 90 AND 180");
 
                             t.HasCheckConstraint("ck_loans_grace", "grace_minutes BETWEEN 15 AND 30");
+
+                            t.HasCheckConstraint("ck_loans_standard_photo", "type <> 'STANDARD' OR photo_file_id IS NOT NULL");
                         });
                 });
 
@@ -1502,6 +1532,67 @@ namespace Tams.Api.Data.Migrations
                     b.ToTable("profile_holds");
                 });
 
+            modelBuilder.Entity("Tams.Api.Data.Entities.RefreshToken", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<string>("IpAddress")
+                        .HasMaxLength(45)
+                        .HasColumnType("character varying(45)")
+                        .HasColumnName("ip_address");
+
+                    b.Property<Guid?>("ReplacedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("replaced_by_id");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("revoked_at");
+
+                    b.Property<byte[]>("TokenHash")
+                        .IsRequired()
+                        .HasColumnType("bytea")
+                        .HasColumnName("token_hash");
+
+                    b.Property<string>("UserAgent")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("user_agent");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_refresh_tokens");
+
+                    b.HasIndex("ReplacedById")
+                        .HasDatabaseName("ix_refresh_tokens_replaced_by_id");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique()
+                        .HasDatabaseName("ix_refresh_tokens_token_hash_uq");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_refresh_tokens_user_id");
+
+                    b.ToTable("refresh_tokens");
+                });
+
             modelBuilder.Entity("Tams.Api.Data.Entities.Room", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1512,9 +1603,11 @@ namespace Tams.Api.Data.Migrations
 
                     b.Property<string>("Building")
                         .IsRequired()
+                        .ValueGeneratedOnAdd()
                         .HasMaxLength(80)
                         .HasColumnType("character varying(80)")
-                        .HasColumnName("building");
+                        .HasColumnName("building")
+                        .HasDefaultValueSql("'College Building'");
 
                     b.Property<string>("Code")
                         .IsRequired()
@@ -1561,7 +1654,8 @@ namespace Tams.Api.Data.Migrations
 
                     b.HasIndex("Code")
                         .IsUnique()
-                        .HasDatabaseName("ix_rooms_code_uq");
+                        .HasDatabaseName("ix_rooms_code_uq")
+                        .HasFilter("deleted_at IS NULL");
 
                     b.ToTable("rooms");
                 });
@@ -1694,8 +1788,10 @@ namespace Tams.Api.Data.Migrations
                         .HasColumnName("firmware_version");
 
                     b.Property<StationHealth>("Health")
+                        .ValueGeneratedOnAdd()
                         .HasColumnType("station_health")
-                        .HasColumnName("health");
+                        .HasColumnName("health")
+                        .HasDefaultValueSql("'OFFLINE'::station_health");
 
                     b.Property<string>("IpAddress")
                         .HasMaxLength(45)
@@ -1744,7 +1840,8 @@ namespace Tams.Api.Data.Migrations
 
                     b.HasIndex("StationCode")
                         .IsUnique()
-                        .HasDatabaseName("ix_stations_station_code_uq");
+                        .HasDatabaseName("ix_stations_station_code_uq")
+                        .HasFilter("deleted_at IS NULL");
 
                     b.ToTable("stations");
                 });
@@ -1801,12 +1898,16 @@ namespace Tams.Api.Data.Migrations
                         .HasDefaultValueSql("gen_random_uuid()");
 
                     b.Property<short>("ActiveMarkCount")
+                        .ValueGeneratedOnAdd()
                         .HasColumnType("smallint")
-                        .HasColumnName("active_mark_count");
+                        .HasColumnName("active_mark_count")
+                        .HasDefaultValueSql("0");
 
                     b.Property<short>("ActiveWarningCount")
+                        .ValueGeneratedOnAdd()
                         .HasColumnType("smallint")
-                        .HasColumnName("active_warning_count");
+                        .HasColumnName("active_warning_count")
+                        .HasDefaultValueSql("0");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .ValueGeneratedOnAdd()
@@ -1825,8 +1926,10 @@ namespace Tams.Api.Data.Migrations
                         .HasColumnName("first_name");
 
                     b.Property<bool>("HasActiveHold")
+                        .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")
-                        .HasColumnName("has_active_hold");
+                        .HasColumnName("has_active_hold")
+                        .HasDefaultValueSql("false");
 
                     b.Property<string>("LastName")
                         .IsRequired()
@@ -1839,8 +1942,10 @@ namespace Tams.Api.Data.Migrations
                         .HasColumnName("section_id");
 
                     b.Property<StudentStanding>("Standing")
+                        .ValueGeneratedOnAdd()
                         .HasColumnType("student_standing")
-                        .HasColumnName("standing");
+                        .HasColumnName("standing")
+                        .HasDefaultValueSql("'GOOD'::student_standing");
 
                     b.Property<RecordStatus>("Status")
                         .HasColumnType("record_status")
@@ -1866,7 +1971,8 @@ namespace Tams.Api.Data.Migrations
 
                     b.HasIndex("StudentNo")
                         .IsUnique()
-                        .HasDatabaseName("ix_students_student_no_uq");
+                        .HasDatabaseName("ix_students_student_no_uq")
+                        .HasFilter("deleted_at IS NULL");
 
                     b.ToTable("students");
                 });
@@ -2032,8 +2138,10 @@ namespace Tams.Api.Data.Migrations
                         .HasColumnName("first_name");
 
                     b.Property<bool>("IsEventCoordinator")
+                        .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")
-                        .HasColumnName("is_event_coordinator");
+                        .HasColumnName("is_event_coordinator")
+                        .HasDefaultValueSql("false");
 
                     b.Property<string>("LastName")
                         .IsRequired()
@@ -2094,18 +2202,21 @@ namespace Tams.Api.Data.Migrations
 
                     b.HasIndex("Email")
                         .IsUnique()
-                        .HasDatabaseName("ix_users_email_uq");
+                        .HasDatabaseName("ix_users_email_uq")
+                        .HasFilter("deleted_at IS NULL");
 
                     b.HasIndex("EmployeeNo")
                         .IsUnique()
-                        .HasDatabaseName("ix_users_employee_no_uq");
+                        .HasDatabaseName("ix_users_employee_no_uq")
+                        .HasFilter("deleted_at IS NULL");
 
                     b.HasIndex("NormalizedEmail")
                         .HasDatabaseName("ix_users_normalized_email");
 
                     b.HasIndex("NormalizedUserName")
                         .IsUnique()
-                        .HasDatabaseName("ix_users_normalized_user_name_uq");
+                        .HasDatabaseName("ix_users_normalized_user_name_uq")
+                        .HasFilter("deleted_at IS NULL");
 
                     b.ToTable("users");
                 });
@@ -2639,6 +2750,22 @@ namespace Tams.Api.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_profile_holds_student_id");
+                });
+
+            modelBuilder.Entity("Tams.Api.Data.Entities.RefreshToken", b =>
+                {
+                    b.HasOne("Tams.Api.Data.Entities.RefreshToken", null)
+                        .WithMany()
+                        .HasForeignKey("ReplacedById")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_refresh_tokens_replaced_by_id");
+
+                    b.HasOne("Tams.Api.Data.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_refresh_tokens_user_id");
                 });
 
             modelBuilder.Entity("Tams.Api.Data.Entities.RoomScan", b =>

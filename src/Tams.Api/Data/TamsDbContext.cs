@@ -10,6 +10,7 @@ public class TamsDbContext(DbContextOptions<TamsDbContext> options) : DbContext(
 {
     public DbSet<User> Users => Set<User>();
     public DbSet<DeviceToken> DeviceTokens => Set<DeviceToken>();
+    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<AuthCard> AuthCards => Set<AuthCard>();
     public DbSet<Section> Sections => Set<Section>();
     public DbSet<Student> Students => Set<Student>();
@@ -57,9 +58,12 @@ public class TamsDbContext(DbContextOptions<TamsDbContext> options) : DbContext(
         ConfigureUsers(b);
         ConfigureIndexes(b);
         ConfigureChecks(b);
+        ConfigureDefaults(b);
         WireForeignKeys(b);
         ApplyConventions(b);
     }
+
+    const string Live = "deleted_at IS NULL";
 
     static void ConfigureUsers(ModelBuilder b)
     {
@@ -75,31 +79,43 @@ public class TamsDbContext(DbContextOptions<TamsDbContext> options) : DbContext(
             e.Ignore(u => u.PhoneNumber);
             e.Ignore(u => u.PhoneNumberConfirmed);
             e.Ignore(u => u.TwoFactorEnabled);
-            e.HasIndex(u => u.Email).IsUnique();
-            e.HasIndex(u => u.NormalizedUserName).IsUnique();
+            // Partial: a soft-deleted account must not block reuse of its email (PRD 7.3, decision #7).
+            e.HasIndex(u => u.Email).IsUnique().HasFilter(Live);
+            e.HasIndex(u => u.NormalizedUserName).IsUnique().HasFilter(Live);
             e.HasIndex(u => u.NormalizedEmail);
         });
     }
 
     static void ConfigureIndexes(ModelBuilder b)
     {
-        b.Entity<User>().HasIndex(x => x.EmployeeNo).IsUnique();
+        b.Entity<User>().HasIndex(x => x.EmployeeNo).IsUnique().HasFilter(Live);
+        b.Entity<RefreshToken>().HasIndex(x => x.TokenHash).IsUnique();
+        b.Entity<RefreshToken>().HasIndex(x => x.UserId);
         b.Entity<DeviceToken>().HasIndex(x => x.Token).IsUnique();
         b.Entity<AuthCard>().HasIndex(x => x.CardUid).IsUnique();
         b.Entity<Section>().HasIndex(x => new { x.Code, x.SchoolYear }).IsUnique();
-        b.Entity<Student>().HasIndex(x => x.StudentNo).IsUnique();
+        b.Entity<Student>().HasIndex(x => x.StudentNo).IsUnique().HasFilter(Live);
         b.Entity<FingerprintTemplate>().HasIndex(x => new { x.StudentId, x.FingerIndex }).IsUnique();
-        b.Entity<Room>().HasIndex(x => x.Code).IsUnique();
-        b.Entity<Station>().HasIndex(x => x.StationCode).IsUnique();
+        b.Entity<Room>().HasIndex(x => x.Code).IsUnique().HasFilter(Live);
+        b.Entity<Station>().HasIndex(x => x.StationCode).IsUnique().HasFilter(Live);
         b.Entity<StationHeartbeat>().HasIndex(x => new { x.StationId, x.ReceivedAt });
         b.Entity<AssetCategory>().HasIndex(x => x.Name).IsUnique();
-        b.Entity<Asset>().HasIndex(x => x.AssetCode).IsUnique();
-        b.Entity<Asset>().HasIndex(x => x.RfidTagUid).IsUnique(); // null allowed, many nulls fine
+        b.Entity<Asset>().HasIndex(x => x.AssetCode).IsUnique().HasFilter(Live);
+        b.Entity<Asset>().HasIndex(x => x.RfidTagUid).IsUnique().HasFilter(Live); // null allowed, many nulls fine
         b.Entity<Approval>().HasIndex(x => x.SessionId).IsUnique();
         b.Entity<Loan>().HasIndex(x => x.LoanNo).IsUnique();
         // An asset can have only one open loan (PRD 7.3).
         b.Entity<Loan>().HasIndex(x => x.AssetId).IsUnique().HasDatabaseName("ux_loans_open_asset")
             .HasFilter("status IN ('ACTIVE','OVERDUE')");
+        // One open enrollment session per student, and one open session of any type per station.
+        const string openStatuses = "status IN ('AWAITING_FINGERPRINT','AWAITING_ASSET','AWAITING_PHOTO','AWAITING_APPROVAL','AWAITING_CONFIRM')";
+        b.Entity<CheckoutSession>().HasIndex(x => x.StudentId, "ux_checkout_sessions_open_enrollment_student").IsUnique()
+            .HasFilter($"type = 'ENROLLMENT' AND {openStatuses}");
+        b.Entity<CheckoutSession>().HasIndex(x => x.StationId, "ux_checkout_sessions_open_station").IsUnique()
+            .HasFilter(openStatuses);
+        // Two HasIndex calls on one column merge unless the index is named, and EF drops the conventional FK index when it is not declared; declare them so closed-session lookups stay indexed.
+        b.Entity<CheckoutSession>().HasIndex(x => x.StudentId).HasDatabaseName("ix_checkout_sessions_student_id");
+        b.Entity<CheckoutSession>().HasIndex(x => x.StationId).HasDatabaseName("ix_checkout_sessions_station_id");
         b.Entity<RoomScan>().HasIndex(x => new { x.StationId, x.ScannedAt });
         b.Entity<LateArrivalWarning>().HasIndex(x => x.LoanId).IsUnique();
         b.Entity<NonComplianceMark>().HasIndex(x => new { x.LoanId, x.Reason }).IsUnique();
@@ -120,6 +136,38 @@ public class TamsDbContext(DbContextOptions<TamsDbContext> options) : DbContext(
             t.HasCheckConstraint("ck_loans_grace", "grace_minutes BETWEEN 15 AND 30");
         });
         b.Entity<Event>().ToTable(t => t.HasCheckConstraint("ck_events_period", "ends_at > starts_at"));
+        // PRD 7.3: loans.photo_file_id is not null for STANDARD loans; BORROWABLE assets need a tag.
+        b.Entity<Loan>().ToTable(t => t.HasCheckConstraint("ck_loans_standard_photo", "type <> 'STANDARD' OR photo_file_id IS NOT NULL"));
+        b.Entity<Asset>().ToTable(t => t.HasCheckConstraint("ck_assets_borrowable_tag", "type <> 'BORROWABLE' OR rfid_tag_uid IS NOT NULL"));
+        b.Entity<CheckoutSession>().ToTable(t => t.HasCheckConstraint("ck_checkout_sessions_finger_index", "finger_index IS NULL OR finger_index BETWEEN 0 AND 9"));
+    }
+
+    // PRD 7.3 column defaults, so rows inserted outside EF (seed scripts, psql) behave the same.
+    static void ConfigureDefaults(ModelBuilder b)
+    {
+        // HasSentinel: the value that means "not set, let the database default apply". It equals the
+        // default itself, except stations.health where Online (the CLR default) is a real value.
+        b.Entity<User>().Property(x => x.IsEventCoordinator).HasDefaultValueSql("false").HasSentinel(false);
+        b.Entity<Student>(e =>
+        {
+            e.Property(x => x.Standing).HasDefaultValueSql("'GOOD'::student_standing").HasSentinel(StudentStanding.Good);
+            e.Property(x => x.ActiveWarningCount).HasDefaultValueSql("0");
+            e.Property(x => x.ActiveMarkCount).HasDefaultValueSql("0");
+            e.Property(x => x.HasActiveHold).HasDefaultValueSql("false").HasSentinel(false);
+        });
+        b.Entity<Station>().Property(x => x.Health).HasDefaultValueSql("'OFFLINE'::station_health").HasSentinel(StationHealth.Offline);
+        b.Entity<Asset>(e =>
+        {
+            e.Property(x => x.Status).HasDefaultValueSql("'IN_STORAGE'::asset_status").HasSentinel(AssetStatus.InStorage);
+            e.Property(x => x.Condition).HasDefaultValueSql("'GOOD'::asset_condition").HasSentinel(AssetCondition.Good);
+        });
+        b.Entity<Room>().Property(x => x.Building).HasDefaultValueSql("'College Building'");
+        b.Entity<CheckoutSession>(e =>
+        {
+            e.Property(x => x.FingerprintAttempts).HasDefaultValueSql("0");
+            e.Property(x => x.LcdLines).HasDefaultValueSql("'[]'::jsonb");
+        });
+        b.Entity<RefreshToken>().HasOne<RefreshToken>().WithMany().HasForeignKey(x => x.ReplacedById).OnDelete(DeleteBehavior.SetNull);
     }
 
     // Every property named <Something>Id whose suffix is in FkTargets becomes an FK. Restrict by

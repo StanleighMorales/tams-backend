@@ -9,3 +9,5 @@ obj/
 
 # Local file storage; the media volume holds these in Compose.
 media/
+# Development Data Protection key ring.
+keys/

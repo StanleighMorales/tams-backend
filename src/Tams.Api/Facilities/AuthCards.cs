@@ -156,7 +156,7 @@ public static class AuthCardEndpoints
 
     // The same UID must not be both an asset tag and an instructor card.
     static async Task<bool> UidInUse(TamsDbContext db, string uid, CancellationToken ct) =>
-        await db.AuthCards.AnyAsync(c => c.CardUid == uid, ct) || await db.Assets.AnyAsync(a => a.RfidTagUid == uid, ct);
+        await db.AuthCards.AnyAsync(c => c.CardUid == uid, ct) || await db.Assets.AnyAsync(a => a.DeletedAt == null && a.RfidTagUid == uid, ct);
 
     // PRD 7.3: card owner is an instructor or coordinator.
     static async Task<IResult?> CheckOwner(TamsDbContext db, Guid userId, CancellationToken ct)

@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Tams.Api.Auth;
 using Tams.Api.Assets;
@@ -24,8 +26,26 @@ var connectionString = builder.Configuration.GetConnectionString("Default")
 
 builder.Services.AddDbContext<TamsDbContext>(o => o.UseNpgsql(connectionString, PgEnums.MapAll));
 builder.Services.AddTamsSettings();
+builder.Services.AddHostedService<EnrollmentSweeper>();
+
+// Fingerprint templates are encrypted with Data Protection; the key ring must survive container
+// rebuilds (Compose mounts the dp-keys volume at /app/keys) or stored templates become unreadable.
+builder.Services.AddDataProtection()
+    .SetApplicationName("tams")
+    .PersistKeysToFileSystem(new DirectoryInfo(builder.Configuration["DataProtection:KeysPath"] ?? "/app/keys"));
+
+// Only Caddy can reach the api container (Compose network), so its X-Forwarded-* headers are trusted:
+// clearing the known networks/proxies lets the middleware accept them from the Docker network address.
+builder.Services.Configure<ForwardedHeadersOptions>(o =>
+{
+    o.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    o.KnownIPNetworks.Clear();
+    o.KnownProxies.Clear();
+});
 
 var app = builder.Build();
+
+app.UseForwardedHeaders(); // first: auth, audit IPs and kiosk IP checks need the real client address
 
 // PRD 6.3: endpoints live under /api. PathBase strips the prefix, so /api/x and /x both route,
 // which keeps the Compose healthcheck and local curl working. UseRouting must come after it.

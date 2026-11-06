@@ -90,8 +90,10 @@ public static partial class RosterImport
             .ToDictionary(s => (s.Code, s.SchoolYear));
 
         var nos = rows.Select(r => r.StudentNo).ToList();
+        // The unique index is partial (live rows only), so a live and a deleted row can share a number:
+        // the live row wins; a number with only a deleted row is skipped (ROW_STUDENT_DELETED).
         var students = (await db.Students.Where(s => nos.Contains(s.StudentNo)).ToListAsync(ct))
-            .ToDictionary(s => s.StudentNo);
+            .OrderBy(s => s.DeletedAt != null).GroupBy(s => s.StudentNo).ToDictionary(g => g.Key, g => g.First());
 
         int created = 0, updated = 0, unchanged = 0, sectionsCreated = 0;
         var seen = new HashSet<string>();
