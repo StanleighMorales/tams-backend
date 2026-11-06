@@ -12,12 +12,7 @@ static class CategoryEndpoints
     {
         var g = app.MapGroup("/asset-categories").WithTags("Asset categories");
 
-        g.MapGet("", async (TamsDbContext db, CancellationToken ct) =>
-            Results.Ok(await db.AssetCategories.AsNoTracking().OrderBy(c => c.Name)
-                .Select(c => new CategoryDto(c.Id, c.Name, c.Description, c.IsBorrowable,
-                    db.Assets.Count(a => a.CategoryId == c.Id && a.DeletedAt == null)))
-                .ToListAsync(ct)))
-            .RequireRoles(Roles.Admin, Roles.TechStaff, Roles.Custodian);
+        g.MapGet("", List).RequireRoles(Roles.Admin, Roles.TechStaff, Roles.Custodian);
 
         g.MapGet("{id:guid}", async (Guid id, TamsDbContext db, CancellationToken ct) =>
             await db.AssetCategories.AsNoTracking().Where(c => c.Id == id)
@@ -89,6 +84,32 @@ static class CategoryEndpoints
             await db.SaveChangesAsync(ct);
             return Results.NoContent();
         }).RequireRoles(Roles.Admin, Roles.TechStaff);
+    }
+
+    static async Task<IResult> List(TamsDbContext db, CancellationToken ct,
+        string? q, string? sort, int page = 1, int pageSize = 25)
+    {
+        var errors = new Dictionary<string, string[]>();
+        if (page < 1) errors["page"] = ["Must be 1 or greater."];
+        if (pageSize is < 1 or > 100) errors["pageSize"] = ["Must be between 1 and 100."];
+        var sortKey = sort?.TrimStart('-').ToLowerInvariant();
+        if (sortKey is not (null or "" or "name")) errors["sort"] = ["Must be name, optionally prefixed with '-'."];
+        if (errors.Count > 0) return Problems.Validation(errors);
+
+        var query = db.AssetCategories.AsNoTracking().AsQueryable();
+        if (!string.IsNullOrWhiteSpace(q))
+        {
+            var like = "%" + q.Trim().Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_") + "%";
+            query = query.Where(c => EF.Functions.ILike(c.Name, like)
+                || (c.Description != null && EF.Functions.ILike(c.Description, like)));
+        }
+        var total = await query.CountAsync(ct);
+        query = sort?.StartsWith('-') == true ? query.OrderByDescending(c => c.Name) : query.OrderBy(c => c.Name);
+        var items = await query.Skip((page - 1) * pageSize).Take(pageSize)
+            .Select(c => new CategoryDto(c.Id, c.Name, c.Description, c.IsBorrowable,
+                db.Assets.Count(a => a.CategoryId == c.Id && a.DeletedAt == null)))
+            .ToListAsync(ct);
+        return Results.Ok(new PagedResult<CategoryDto>(items, page, pageSize, total));
     }
 
     static IResult? Validate(CategoryRequest req)
