@@ -62,6 +62,16 @@ static class LoanRules
 
     public static string? Json(object? o) => o is null ? null : JsonSerializer.Serialize(o, JsonSerializerOptions.Web);
 
+    /// <summary>FR-2.4: append-only ledger row (the database rejects UPDATE and DELETE).</summary>
+    public static void Ledger(TamsDbContext db, LedgerEvent evt, Loan loan, DateTimeOffset at, Guid? stationId = null,
+        Guid? actor = null, object? details = null, DateTimeOffset? approvalDecidedAt = null) =>
+        db.TransactionLedger.Add(new TransactionLedger
+        {
+            Event = evt, LoanId = loan.Id, AssetId = loan.AssetId, StudentId = loan.StudentId,
+            InstructorUserId = loan.ApprovedByUserId ?? loan.CoordinatorUserId, ApprovalDecidedAt = approvalDecidedAt,
+            PhotoFileId = loan.PhotoFileId, StationId = stationId, ActorUserId = actor, OccurredAt = at, Details = Json(details),
+        });
+
     public static object StatusChanged(Guid assetId, AssetStatus from, AssetStatus to, Guid? roomId) =>
         new { assetId, oldStatus = Support.Label(from), newStatus = Support.Label(to), roomId };
 

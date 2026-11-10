@@ -347,6 +347,8 @@ public static class KioskEndpoints
         asset.Status = AssetStatus.InTransit;
         asset.CurrentRoomId = null;
         asset.UpdatedAt = now;
+        LoanRules.Ledger(db, LedgerEvent.Checkout, loan, now, s.StationId,
+            details: new { sessionId = s.Id, loan.DestinationRoomId, loan.ClassLengthMinutes, loan.DueAt }, approvalDecidedAt: approval.DecidedAt);
         await EndAsync(db, s, SessionStatus.Completed, null,
             ["Borrowed! Tap item", "at room door within", $"{transit} minutes", $"Due {LocalTime.Clock(loan.DueAt)}"], outbox, now, ct);
         await db.SaveChangesAsync(ct);
