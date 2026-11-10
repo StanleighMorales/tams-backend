@@ -80,8 +80,8 @@ public static class KioskEndpoints
         SessionType? requested = null;
         if (req.Type is not null)
         {
-            if (!Support.TryParse<SessionType>(req.Type, out var t) || t is SessionType.Enrollment or SessionType.EventBatch or SessionType.EventReturn)
-                return Invalid("type", "Must be CHECKOUT or RETURN.");
+            if (!Support.TryParse<SessionType>(req.Type, out var t) || t == SessionType.Enrollment)
+                return Invalid("type", "Must be CHECKOUT, RETURN, EVENT_BATCH or EVENT_RETURN.");
             requested = t;
         }
         var uid = "";
@@ -130,13 +130,35 @@ public static class KioskEndpoints
 
             if (fail is null)
             {
-                session.Type = SessionType.Checkout;
-                // FR-2.3 / step 2 of F1: a frozen instructor's card is refused at the tap.
-                if (await LoanRules.IsFrozenAsync(db, user!.Id, ct)) fail = ErrorCodes.InstructorFrozen;
+                var running = user!.IsEventCoordinator ? await RunningEventAsync(db, user.Id, now, ct) : null;
+                session.Type = requested ?? (running is not null ? SessionType.EventBatch : SessionType.Checkout);
+                if (session.Type == SessionType.Checkout)
+                {
+                    // FR-2.3 / step 2 of F1: a frozen instructor's card is refused at the tap.
+                    if (await LoanRules.IsFrozenAsync(db, user.Id, ct)) fail = ErrorCodes.InstructorFrozen;
+                    else
+                    {
+                        session.Status = SessionStatus.AwaitingFingerprint;
+                        lcd = [Instr(user), "Place finger on", "sensor", ""];
+                    }
+                }
                 else
                 {
-                    session.Status = SessionStatus.AwaitingFingerprint;
-                    lcd = [Instr(user), "Place finger on", "sensor", ""];
+                    var evt = !user.IsEventCoordinator ? null
+                        : session.Type == SessionType.EventBatch ? running
+                        : await db.Events.AsNoTracking()
+                            .Where(e => e.CoordinatorUserId == user.Id && db.Loans.Any(l => l.EventId == e.Id
+                                && (l.Status == LoanStatus.Active || l.Status == LoanStatus.Overdue || l.Status == LoanStatus.Missing)))
+                            .OrderByDescending(e => e.EndsAt).FirstOrDefaultAsync(ct);
+                    if (evt is null) fail = session.Type == SessionType.EventBatch ? "NO_ACTIVE_EVENT" : "NO_EVENT_LOANS";
+                    else
+                    {
+                        session.EventId = evt.Id;
+                        session.Status = SessionStatus.AwaitingAsset;
+                        lcd = session.Type == SessionType.EventBatch
+                            ? [evt.Title, "Tap items to lend", "0 borrowed", "OK when done"]
+                            : [evt.Title, "Tap items to return", "0 returned", "OK when done"];
+                    }
                 }
             }
         }
@@ -163,6 +185,13 @@ public static class KioskEndpoints
         return Results.Ok(View(session, now, await settings.GetIntAsync(SettingKeys.PollInterval, ct)));
     }
 
+    static Task<Event?> RunningEventAsync(TamsDbContext db, Guid coordinatorId, DateTimeOffset now, CancellationToken ct) =>
+        db.Events.AsNoTracking()
+            .Where(e => e.CoordinatorUserId == coordinatorId && (e.Status == EventStatus.Scheduled || e.Status == EventStatus.Active)
+                && e.StartsAt <= now && e.EndsAt > now)
+            .OrderBy(e => e.EndsAt).FirstOrDefaultAsync(ct);
+
+    // ---------------------------------------------------------------- session-scoped
 
     static async Task<IResult> Get(Guid id, HttpContext http, TamsDbContext db, ISettings settings, IHubContext<LiveHub> hub, CancellationToken ct)
     {
@@ -287,8 +316,68 @@ public static class KioskEndpoints
                 await EndAsync(db, s, SessionStatus.Completed, null, ["Returned!", asset!.AssetCode, "Thank you", ""], outbox, now, ct);
                 break;
             }
+            case SessionType.EventBatch:
+                s.ExpiresAt = now + idle;
+                await BatchLendAsync(db, settings, s, asset, borrowable, outbox, now, ct);
+                break;
+            case SessionType.EventReturn:
+            {
+                s.ExpiresAt = now + idle;
+                var loan = asset is null ? null : await OpenLoanAsync(db, asset.Id, s.EventId, ct);
+                if (loan is not null)
+                    await LoanRules.CloseAsync(db, outbox, loan.Id, now, null, s.StationId, s.InstructorUserId, station!.RoomId, "Bulk return", ct);
+                var returned = await ReturnedInSessionAsync(db, s, ct);
+                s.LcdLines = LcdJson.Write(loan is not null ? $"Returned {asset!.AssetCode}" : asset is null ? "Unknown item tag" : "Not in this event",
+                    "Tap next item", $"{returned} returned", "OK when done");
+                break;
+            }
         }
         return await FinishAsync(db, tx, outbox, hub, s, settings, now, ct);
+    }
+
+    /// <summary>FR-5.3 to FR-5.5: each tap in batch mode is a loan for the coordinator, due at event end + grace.</summary>
+    static async Task BatchLendAsync(TamsDbContext db, ISettings settings, CheckoutSession s, Asset? asset, bool borrowable,
+        Outbox outbox, DateTimeOffset now, CancellationToken ct)
+    {
+        var evt = await db.Events.AsNoTracking().FirstAsync(e => e.Id == s.EventId, ct);
+        var lent = await db.Loans.CountAsync(l => l.SessionId == s.Id, ct);
+        var refusal = now >= evt.EndsAt || evt.Status is EventStatus.Closed or EventStatus.Cancelled ? "Event has ended"
+            : asset is null ? "Unknown item tag"
+            : !borrowable ? "Item not borrowable"
+            : asset.Status != AssetStatus.InStorage ? "Item not available"
+            : null;
+        if (refusal is not null)
+        {
+            s.LcdLines = LcdJson.Write(refusal, "Tap next item", $"{lent} borrowed", "OK when done");
+            return;
+        }
+
+        var stationed = evt.VenueRoomId is Guid venue && await db.Stations.AnyAsync(st => st.RoomId == venue
+            && st.Type == StationType.RoomStation && st.DeletedAt == null && st.Status == RecordStatus.Active, ct);
+        var grace = (short)await settings.GetIntAsync(SettingKeys.Grace, ct);
+        var transit = await settings.GetIntAsync(SettingKeys.TransitWindow, ct);
+        var loan = new Loan
+        {
+            Id = Guid.NewGuid(), LoanNo = await NextLoanNoAsync(db, now, ct), Type = LoanType.Event, AssetId = asset!.Id,
+            CoordinatorUserId = s.InstructorUserId, EventId = evt.Id, SessionId = s.Id, CheckoutStationId = s.StationId,
+            DestinationRoomId = evt.VenueRoomId, Status = LoanStatus.Active,
+            CustodyState = stationed ? CustodyState.AwaitingArrival : CustodyState.NotRequired, // FR-5.5
+            CheckedOutAt = now, TransitDeadlineAt = stationed ? now.AddMinutes(transit) : null,
+            ClassEndsAt = evt.EndsAt, GraceMinutes = grace, DueAt = evt.EndsAt.AddMinutes(grace), // FR-5.4
+        };
+        db.Loans.Add(loan);
+        var from = asset.Status;
+        // ponytail: there is no "out at an event" asset status; without a venue station it reads as verified at the venue.
+        asset.Status = stationed ? AssetStatus.InTransit : AssetStatus.InRoomVerified;
+        asset.CurrentRoomId = stationed ? null : evt.VenueRoomId;
+        asset.UpdatedAt = now;
+        LoanRules.Ledger(db, LedgerEvent.Checkout, loan, now, s.StationId, details: new { sessionId = s.Id, eventId = evt.Id, batch = true });
+        s.LcdLines = LcdJson.Write($"Borrowed {asset.AssetCode}", "Tap next item", $"{lent + 1} borrowed", "OK when done");
+        await db.SaveChangesAsync(ct);
+
+        outbox.Staff("loan.created", LoanCreated(loan, asset));
+        outbox.Staff("asset.statusChanged", LoanRules.StatusChanged(asset.Id, from, asset.Status, asset.CurrentRoomId));
+        await LoanRules.OccupancyChangedAsync(db, outbox, loan.DestinationRoomId, now, ct);
     }
 
     static async Task<IResult> Photo(Guid id, HttpContext http, TamsDbContext db, ISettings settings, IConfiguration cfg,
@@ -333,7 +422,23 @@ public static class KioskEndpoints
         if (deny is not null) return deny;
         if (expired) return await FinishAsync(db, tx, outbox, hub, s!, settings, now, ct);
 
-        if (s!.Type == SessionType.Checkout && s.Status == SessionStatus.AwaitingConfirm)
+        if (s!.Type == SessionType.EventBatch && s.Status == SessionStatus.AwaitingAsset)
+        {
+            var lent = await db.Loans.CountAsync(l => l.SessionId == s.Id, ct);
+            var evt = await db.Events.AsNoTracking().FirstAsync(e => e.Id == s.EventId, ct);
+            var grace = await settings.GetIntAsync(SettingKeys.Grace, ct);
+            await EndAsync(db, s, SessionStatus.Completed, null,
+                ["Done", $"{lent} items borrowed", $"Due {LocalTime.Clock(evt.EndsAt.AddMinutes(grace))}", ""], outbox, now, ct);
+        }
+        else if (s.Type == SessionType.EventReturn && s.Status == SessionStatus.AwaitingAsset)
+        {
+            // FR-5.6 "Done": matched loans closed as they were tapped; the rest stay open and listed on the event.
+            var returned = await ReturnedInSessionAsync(db, s, ct);
+            var stillOut = await db.Loans.CountAsync(l => l.EventId == s.EventId
+                && (l.Status == LoanStatus.Active || l.Status == LoanStatus.Overdue || l.Status == LoanStatus.Missing), ct);
+            await EndAsync(db, s, SessionStatus.Completed, null, ["Done", $"{returned} returned", $"{stillOut} still out", ""], outbox, now, ct);
+        }
+        else if (s.Type == SessionType.Checkout && s.Status == SessionStatus.AwaitingConfirm)
             await CreateLoanAsync(db, settings, s, outbox, now, ct);
         else
             return InvalidState(s.Status, "confirm");
@@ -375,6 +480,7 @@ public static class KioskEndpoints
 
         outbox.Staff("loan.created", LoanCreated(loan, asset));
         outbox.Staff("asset.statusChanged", LoanRules.StatusChanged(asset.Id, AssetStatus.AtCounter, AssetStatus.InTransit, loan.DestinationRoomId));
+        await LoanRules.OccupancyChangedAsync(db, outbox, loan.DestinationRoomId, now, ct);
     }
 
     static async Task<IResult> Cancel(Guid id, HttpContext http, TamsDbContext db, ISettings settings, IHubContext<LiveHub> hub, CancellationToken ct)
@@ -406,6 +512,9 @@ public static class KioskEndpoints
             .Where(l => l.AssetId == assetId && (eventId == null || l.EventId == eventId)
                 && (l.Status == LoanStatus.Active || l.Status == LoanStatus.Overdue || l.Status == LoanStatus.Missing))
             .OrderByDescending(l => l.CheckedOutAt).FirstOrDefaultAsync(ct);
+
+    static Task<int> ReturnedInSessionAsync(TamsDbContext db, CheckoutSession s, CancellationToken ct) =>
+        db.Loans.CountAsync(l => l.EventId == s.EventId && l.ReturnStationId == s.StationId && l.ReturnedAt >= s.CreatedAt, ct);
 
     static Task<Station?> StationAsync(TamsDbContext db, string code, CancellationToken ct)
     {
