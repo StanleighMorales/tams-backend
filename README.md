@@ -26,6 +26,28 @@ Caddy redirects port 80 to 443 and signs the localhost certificate with its own 
 CA, which is why `-k` is needed locally. On the VPS with a real `TAMS_DOMAIN` the
 certificate is publicly trusted and `-k` is not.
 
+## Running it for front-end work
+
+```bash
+cp .env.example .env     # set POSTGRES_PASSWORD, BOOTSTRAP_ADMIN_EMAIL and BOOTSTRAP_ADMIN_PASSWORD
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+```
+
+Needs only Docker Desktop. The API is then at **`http://localhost:8080/api/...`** (plain HTTP, so no
+certificate warning) with the Scalar UI at `http://localhost:8080/scalar`. Sign in with
+`POST /api/auth/login` and send `Authorization: Bearer <accessToken>`.
+
+- **CORS:** browsers may call the API from the origins in `CORS_ORIGINS` (default
+  `http://localhost:5173`, the Vite dev server). Change it in `.env` if the front end runs elsewhere.
+- **Sample data:** with `SEED_DEMO=true` (the `.env.example` default) an empty database is filled with the data from
+  `docs/TEST-DATA.md`: rooms, a kiosk, laptops and PCs, two sections and four students. Demo accounts are
+  `tech@`, `custodian@`, `instructor@` and `instructor2@tams.test`, all with password `Demo#Pass123`; the admin is
+  the `BOOTSTRAP_ADMIN_*` account. It runs only in Development and only once (it skips a database that already has
+  the `STORE-1` room). To start over: `docker compose down -v`.
+- **Tests:** `dotnet test` runs the endpoint tests against a throwaway PostgreSQL in Docker.
+
+The `docker-compose.dev.yml` file publishes the API port directly; never use it on the VPS.
+
 ## API docs and error format
 
 In Development the OpenAPI spec is at `/openapi/v1.json` and the Scalar UI at `/scalar`
@@ -59,16 +81,18 @@ Volumes: `db-data` (database), `media` (kiosk photos, report PDFs, QR sheets),
 ```
 Dockerfile              api image, multi-stage
 docker-compose.yml      the three services
+docker-compose.dev.yml  local front-end work: publishes the API on :8080
 Caddyfile               reverse proxy and TLS
 .env.example            copy to .env
 Tams.slnx
-src/Tams.Api/           minimal API; /health is the only endpoint so far
+src/Tams.Api/           minimal API (auth, users, assets, students, enrollment, settings, audit log)
+tests/Tams.Api.Tests/   endpoint tests, one real PostgreSQL in Docker
 src/Tams.Api/Data/      TamsDbContext, entities, enums, migrations (schema v1)
 ```
 
 ## What is not here yet
 
-This is the Compose skeleton (TAMS-20). Still to come:
+Still to come:
 
 - Auth, CRUD, roster import — Sprint 1.
 - The SignalR hub — the Caddy side is already correct, so the hub is just a map call.
