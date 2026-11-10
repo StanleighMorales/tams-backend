@@ -58,6 +58,8 @@ static class SettingKeys
 /// </summary>
 static class LoanRules
 {
+    public static readonly short[] ClassLengths = [90, 120, 150, 180];
+
     public static string? Json(object? o) => o is null ? null : JsonSerializer.Serialize(o, JsonSerializerOptions.Web);
 
     public static object StatusChanged(Guid assetId, AssetStatus from, AssetStatus to, Guid? roomId) =>

@@ -298,6 +298,8 @@ public static class KioskEndpoints
         s.ExpiresAt = now.AddSeconds(await settings.GetIntAsync(SettingKeys.ApprovalTimeout, ct));
         s.LcdLines = LcdJson.Write("Waiting for", "instructor approval", "", "");
         db.Approvals.Add(new Approval { Id = Guid.NewGuid(), SessionId = s.Id, InstructorUserId = s.InstructorUserId!.Value, RequestedAt = now });
+        // FR-2.1: the card owner's phone gets the request as soon as the photo lands.
+        outbox.User(s.InstructorUserId, "approval.requested", await ApprovalEndpoints.RequestPayloadAsync(db, settings, s, ct));
         return await FinishAsync(db, tx, outbox, hub, s, settings, now, ct);
     }
 
