@@ -1,0 +1,8 @@
+# Local front-end work only. Adds the API's plain HTTP port so a browser app can call it without
+# trusting Caddy's local HTTPS certificate:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+# Never use this file on the VPS (it publishes the API directly, bypassing Caddy).
+services:
+  api:
+    ports:
+      - "8080:8080"

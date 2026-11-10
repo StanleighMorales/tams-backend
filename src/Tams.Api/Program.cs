@@ -23,6 +23,14 @@ builder.Services.Configure<Microsoft.AspNetCore.Routing.RouteHandlerOptions>(o =
 builder.Services.AddTamsAuth(builder.Configuration);
 builder.Services.AddTamsPolicies();
 
+// Browser front ends (TanStack Router on Vite) run on another origin, so they need CORS. Cors:Origins is a
+// comma-separated list (env var Cors__Origins); Development defaults to the Vite port. Empty means no CORS.
+// Auth is a Bearer header, not a cookie, so credentials are not allowed.
+var corsOrigins = (builder.Configuration["Cors:Origins"] ?? "")
+    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+if (corsOrigins.Length > 0)
+    builder.Services.AddCors(o => o.AddDefaultPolicy(p => p.WithOrigins(corsOrigins).AllowAnyHeader().AllowAnyMethod()));
+
 var connectionString = builder.Configuration.GetConnectionString("Default")
     ?? throw new InvalidOperationException(
         "ConnectionStrings__Default is not set. Copy .env.example to .env and set POSTGRES_PASSWORD.");
@@ -56,6 +64,7 @@ app.UsePathBase("/api");
 app.UseRouting();
 
 app.UseTamsProblemDetails();
+if (corsOrigins.Length > 0) app.UseCors(); // before auth so preflight (OPTIONS) requests are not rejected as 401
 app.UseTamsAuth();
 app.MapTamsDocs();
 
@@ -68,6 +77,7 @@ if (app.Environment.IsDevelopment())
 }
 
 await app.SeedDevelopmentAdminAsync();
+await app.Services.SeedDemoDataAsync();
 app.MapAuthEndpoints();
 app.MapUserEndpoints();
 app.MapAssetEndpoints();

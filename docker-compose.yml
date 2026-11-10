@@ -29,6 +29,10 @@ services:
       Jwt__Key: ${JWT_KEY:-}
       Bootstrap__AdminEmail: ${BOOTSTRAP_ADMIN_EMAIL:-}
       Bootstrap__AdminPassword: ${BOOTSTRAP_ADMIN_PASSWORD:-}
+      # Comma-separated browser origins allowed to call the API (the front end). On the VPS set the real domain.
+      Cors__Origins: ${CORS_ORIGINS:-http://localhost:5173}
+      # Development only: load the sample data from docs/TEST-DATA.md into an empty database.
+      Seed__Demo: ${SEED_DEMO:-false}
     depends_on:
       db:
         condition: service_healthy

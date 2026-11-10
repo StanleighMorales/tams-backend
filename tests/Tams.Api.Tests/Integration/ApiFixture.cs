@@ -24,6 +24,7 @@ public sealed class ApiFixture : IAsyncLifetime
     WebApplicationFactory<Program> _factory = null!;
 
     public Dictionary<string, Guid> UserIds { get; } = [];
+    public IServiceProvider Services => _factory.Services;
 
     public async Task InitializeAsync()
     {
@@ -36,6 +37,7 @@ public sealed class ApiFixture : IAsyncLifetime
             .UseSetting("Bootstrap:AdminPassword", AdminPassword)
             .UseSetting("DataProtection:KeysPath", Path.Combine(_scratch, "keys"))
             .UseSetting("Media:Path", Path.Combine(_scratch, "media"))
+            .UseSetting("Seed:Demo", "true")
             .UseSetting("Docs:Enabled", "true"));
 
         // One user per role; the instructor is also an event coordinator so it is a valid card owner.
