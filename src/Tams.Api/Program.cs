@@ -14,6 +14,7 @@ using Tams.Api.Settings;
 using Tams.Api.Qr;
 using Tams.Api.Kiosk;
 using Tams.Api.Live;
+using Tams.Api.Loans;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -40,6 +41,7 @@ var connectionString = builder.Configuration.GetConnectionString("Default")
 builder.Services.AddDbContext<TamsDbContext>(o => o.UseNpgsql(connectionString, PgEnums.MapAll));
 builder.Services.AddTamsSettings();
 builder.Services.AddHostedService<EnrollmentSweeper>();
+builder.Services.AddHostedService<LoanSweeper>();
 builder.Services.AddSignalR(); // the kiosk flows push events through IHubContext<LiveHub>
 
 // Fingerprint templates are encrypted with Data Protection; the key ring must survive container

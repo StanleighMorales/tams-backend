@@ -55,6 +55,33 @@ static class KioskSessions
         if (pending is not null) pending.Decision = ApprovalDecision.Expired;
     }
 
+    /// <summary>Expires the locked session if its deadline passed. True when it did.</summary>
+    public static async Task<bool> ExpireIfDueAsync(TamsDbContext db, CheckoutSession s, Outbox outbox, DateTimeOffset now, CancellationToken ct)
+    {
+        if (!IsOpen(s.Status) || s.ExpiresAt > now) return false;
+        var code = s.Status == SessionStatus.AwaitingApproval ? "APPROVAL_TIMEOUT" : "SESSION_EXPIRED";
+        await EndAsync(db, s, SessionStatus.Expired, code, Denied(s, code), outbox, now, ct);
+        return true;
+    }
+
+    /// <summary>Sweeper: expire every open kiosk session past its deadline (FR-1.7).</summary>
+    public static async Task ExpireStaleAsync(TamsDbContext db, Outbox outbox, DateTimeOffset now, CancellationToken ct)
+    {
+        var ids = await db.CheckoutSessions.AsNoTracking().Where(IsOpenExpr)
+            .Where(s => s.Type != SessionType.Enrollment && s.ExpiresAt <= now).Select(s => s.Id).ToListAsync(ct);
+        foreach (var id in ids)
+        {
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+            var s = await LockAsync(db, id, ct);
+            if (s is not null && await ExpireIfDueAsync(db, s, outbox, now, ct))
+            {
+                await db.SaveChangesAsync(ct);
+                await tx.CommitAsync(ct);
+            }
+            db.ChangeTracker.Clear();
+        }
+    }
+
     public static object View(CheckoutSession s, DateTimeOffset now, int pollSeconds)
     {
         var lines = LcdJson.Read(s);

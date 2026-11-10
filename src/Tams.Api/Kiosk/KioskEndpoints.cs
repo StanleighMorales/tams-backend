@@ -183,6 +183,7 @@ public static class KioskEndpoints
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var (s, _, deny, expired) = await OpenAsync(db, http, id, outbox, now, ct);
         if (deny is not null) return deny;
+        if (expired) return await FinishAsync(db, tx, outbox, hub, s!, settings, now, ct);
         if (s!.Status != SessionStatus.AwaitingFingerprint) return InvalidState(s.Status, "submit a fingerprint");
 
         var idle = TimeSpan.FromSeconds(await settings.GetIntAsync(SettingKeys.IdleTimeout, ct));
@@ -237,6 +238,7 @@ public static class KioskEndpoints
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var (s, station, deny, expired) = await OpenAsync(db, http, id, outbox, now, ct);
         if (deny is not null) return deny;
+        if (expired) return await FinishAsync(db, tx, outbox, hub, s!, settings, now, ct);
         if (s!.Status != SessionStatus.AwaitingAsset) return InvalidState(s.Status, "tap an item");
 
         var idle = TimeSpan.FromSeconds(await settings.GetIntAsync(SettingKeys.IdleTimeout, ct));
@@ -280,6 +282,7 @@ public static class KioskEndpoints
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var (s, _, deny, expired) = await OpenAsync(db, http, id, outbox, now, ct);
         if (deny is not null) return deny;
+        if (expired) return await FinishAsync(db, tx, outbox, hub, s!, settings, now, ct);
         if (s!.Status != SessionStatus.AwaitingPhoto) return InvalidState(s.Status, "upload a photo");
 
         // The kiosk retries a failed capture once itself (F1 step 5); a missing or non-JPEG upload ends the borrow.
@@ -306,6 +309,7 @@ public static class KioskEndpoints
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var (s, _, deny, expired) = await OpenAsync(db, http, id, outbox, now, ct);
         if (deny is not null) return deny;
+        if (expired) return await FinishAsync(db, tx, outbox, hub, s!, settings, now, ct);
 
         return InvalidState(s!.Status, "confirm");
     }
@@ -318,6 +322,7 @@ public static class KioskEndpoints
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var (s, _, deny, expired) = await OpenAsync(db, http, id, outbox, now, ct);
         if (deny is not null) return deny;
+        if (expired) return await FinishAsync(db, tx, outbox, hub, s!, settings, now, ct);
         if (!IsOpen(s!.Status)) return InvalidState(s.Status, "cancel");
         // Batch-mode loans already made stay open; cancelling just leaves batch mode.
         await EndAsync(db, s, SessionStatus.Cancelled, "CANCELLED", ["Cancelled", "", "", ""], outbox, now, ct);
@@ -343,7 +348,7 @@ public static class KioskEndpoints
         if (s is null || s.Type == SessionType.Enrollment) return (null, null, NotFound(), false);
         var station = await db.Stations.AsNoTracking().FirstOrDefaultAsync(x => x.Id == s.StationId, ct);
         if (station is null || !StationAuth.IsStationAuthenticated(http, station)) return (null, null, NotAuthenticated(), false);
-        return (s, station, null, false);
+        return (s, station, null, await ExpireIfDueAsync(db, s, outbox, now, ct));
     }
 
     static async Task<IResult> FinishAsync(TamsDbContext db, IDbContextTransaction tx, Outbox outbox, IHubContext<LiveHub> hub,
