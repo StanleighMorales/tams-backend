@@ -1,5 +1,9 @@
 # Test data for every endpoint on `dev`
 
+Sections 1 to 13 are also automated: `dotnet test` starts a throwaway PostgreSQL in Docker (Docker Desktop must be
+running) and runs them against the real API (`tests/Tams.Api.Tests/Integration`, one file per area). Use this page
+for manual checks in Scalar.
+
 Every body below was run against the merged `dev` build (PostgreSQL 17, Development) and gave the status shown.
 Base URL locally: `http://localhost:5111/api` (Scalar UI at `http://localhost:5111/scalar`). Use the **Authorize** box with
 `Bearer <accessToken>`. Run the sections in order: later ones use ids returned by earlier ones.
