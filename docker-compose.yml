@@ -26,12 +26,17 @@ services:
       ConnectionStrings__Default: >-
         Host=db;Port=5432;Database=${POSTGRES_DB:-tams};Username=${POSTGRES_USER:-tams};Password=${POSTGRES_PASSWORD}
       ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
+      Jwt__Key: ${JWT_KEY:-}
+      Bootstrap__AdminEmail: ${BOOTSTRAP_ADMIN_EMAIL:-}
+      Bootstrap__AdminPassword: ${BOOTSTRAP_ADMIN_PASSWORD:-}
     depends_on:
       db:
         condition: service_healthy
     volumes:
       # Kiosk photos, report PDFs and QR sheets (PRD 6.1 file storage).
       - media:/app/media
+      # ASP.NET Data Protection key ring (encrypts fingerprint templates). Lose it, lose the templates.
+      - dp-keys:/app/keys
     restart: unless-stopped
 
   proxy:
@@ -52,5 +57,6 @@ services:
 volumes:
   db-data:
   media:
+  dp-keys:
   caddy-data:
   caddy-config:

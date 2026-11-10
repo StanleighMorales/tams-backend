@@ -26,6 +26,23 @@ Caddy redirects port 80 to 443 and signs the localhost certificate with its own 
 CA, which is why `-k` is needed locally. On the VPS with a real `TAMS_DOMAIN` the
 certificate is publicly trusted and `-k` is not.
 
+## API docs and error format
+
+In Development the OpenAPI spec is at `/openapi/v1.json` and the Scalar UI at `/scalar`
+(`dotnet run --project src/Tams.Api`, port 5111). In Production they are off; set
+`Docs__Enabled=true` to turn them on. The JWT `Bearer` scheme is declared, so the UI's
+Authorize box works once auth lands.
+
+Every error is RFC 7807 `application/problem+json` with a stable `code` and a `traceId`:
+
+```json
+{"type":"...","title":"Not Found","status":404,"code":"NOT_FOUND","traceId":"00-..."}
+```
+
+Endpoints return coded problems with `Tams.Api.Http.Problems`, e.g.
+`Problems.Conflict("RESTORE_CONFLICT", "Tag is already assigned.")`. Unhandled exceptions
+become a 500 `INTERNAL_ERROR` with no detail or stack trace outside Development.
+
 ## Services
 
 | Service | Image | Port | Notes |
@@ -46,16 +63,29 @@ Caddyfile               reverse proxy and TLS
 .env.example            copy to .env
 Tams.slnx
 src/Tams.Api/           minimal API; /health is the only endpoint so far
+src/Tams.Api/Data/      TamsDbContext, entities, enums, migrations (schema v1)
 ```
 
 ## What is not here yet
 
 This is the Compose skeleton (TAMS-20). Still to come:
 
-- EF Core, `DbContext` and the schema v1 migrations — TAMS-27, which depends on the
-  open calls settled in TAMS-21.
 - Auth, CRUD, roster import — Sprint 1.
 - The SignalR hub — the Caddy side is already correct, so the hub is just a map call.
+
+## Database migrations
+
+Schema v1 lives in `src/Tams.Api/Data/Migrations`. In Development the API applies pending
+migrations on start; in Production apply them deliberately. The EF tool is pinned in
+`dotnet-tools.json`:
+
+```bash
+dotnet tool restore
+dotnet tool run dotnet-ef migrations add <Name> --project src/Tams.Api --output-dir Data/Migrations
+dotnet tool run dotnet-ef database update --project src/Tams.Api
+```
+
+`ConnectionStrings__Default` must be set for these commands too.
 
 ## Local development without Docker
 
@@ -65,3 +95,22 @@ dotnet run --project src/Tams.Api
 
 Needs a reachable PostgreSQL and `ConnectionStrings__Default` set, so Compose is
 usually easier.
+
+## Student roster import
+
+`POST /students:import` (ADMIN, TECH_STAFF), `multipart/form-data` with the CSV in a `file`
+field. Query flags: `dryRun=true` (validate and report, save nothing), `strict=true` (any bad
+row rejects the whole file with 422). Max 2 MB and 5000 rows. UTF-8 (BOM, CRLF and quoted
+commas are fine). See `docs/sample-roster.csv`.
+
+Header (case-insensitive, all required, no other columns accepted):
+`student_no,first_name,last_name,section_code,program,year_level,school_year`.
+`school_year` looks like `2026-2027`. Students are upserted by `student_no`; the section is
+found by `section_code` + `school_year` or created. Bad rows are skipped and listed in
+`errors` with their line number and a stable `code` (`ROW_*`); file-level problems are a
+400 with a `CSV_*` code.
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" -F file=@docs/sample-roster.csv \
+  "http://localhost:8080/students:import?dryRun=true"
+```
