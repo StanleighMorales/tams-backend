@@ -80,8 +80,8 @@ public static class KioskEndpoints
         SessionType? requested = null;
         if (req.Type is not null)
         {
-            if (!Support.TryParse<SessionType>(req.Type, out var t) || t != SessionType.Checkout)
-                return Invalid("type", "Must be CHECKOUT.");
+            if (!Support.TryParse<SessionType>(req.Type, out var t) || t is SessionType.Enrollment or SessionType.EventBatch or SessionType.EventReturn)
+                return Invalid("type", "Must be CHECKOUT or RETURN.");
             requested = t;
         }
         var uid = "";
@@ -112,6 +112,12 @@ public static class KioskEndpoints
         };
         string[] lcd = [];
         string? fail = null;
+        if (session.Type == SessionType.Return)
+        {
+            session.Status = SessionStatus.AwaitingFingerprint;
+            lcd = ["Return an item", "Place finger on", "sensor", ""];
+        }
+        else
         {
             var card = await db.AuthCards.AsNoTracking().FirstOrDefaultAsync(c => c.CardUid == uid, ct);
             var user = card is null ? null : await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == card.UserId, ct);
@@ -267,6 +273,20 @@ public static class KioskEndpoints
                 outbox.Staff("asset.statusChanged", LoanRules.StatusChanged(asset.Id, AssetStatus.InStorage, AssetStatus.AtCounter, asset.CurrentRoomId));
                 break;
             }
+            case SessionType.Return:
+            {
+                s.AssetId = asset?.Id;
+                var loan = asset is null ? null : await OpenLoanAsync(db, asset.Id, null, ct);
+                if (loan is null)
+                {
+                    var code = asset is null ? "TAG_UNKNOWN" : "NOT_ON_LOAN";
+                    await EndAsync(db, s, SessionStatus.Failed, code, Denied(s, code), outbox, now, ct);
+                    break;
+                }
+                await LoanRules.CloseAsync(db, outbox, loan.Id, now, s.StudentId, s.StationId, null, station!.RoomId, null, ct);
+                await EndAsync(db, s, SessionStatus.Completed, null, ["Returned!", asset!.AssetCode, "Thank you", ""], outbox, now, ct);
+                break;
+            }
         }
         return await FinishAsync(db, tx, outbox, hub, s, settings, now, ct);
     }
@@ -380,6 +400,12 @@ public static class KioskEndpoints
         loan.StudentId, loan.ApprovedByUserId, loan.CoordinatorUserId, loan.EventId, loan.DestinationRoomId,
         loan.TransitDeadlineAt, loan.DueAt,
     };
+
+    static Task<Loan?> OpenLoanAsync(TamsDbContext db, Guid assetId, Guid? eventId, CancellationToken ct) =>
+        db.Loans.AsNoTracking()
+            .Where(l => l.AssetId == assetId && (eventId == null || l.EventId == eventId)
+                && (l.Status == LoanStatus.Active || l.Status == LoanStatus.Overdue || l.Status == LoanStatus.Missing))
+            .OrderByDescending(l => l.CheckedOutAt).FirstOrDefaultAsync(ct);
 
     static Task<Station?> StationAsync(TamsDbContext db, string code, CancellationToken ct)
     {

@@ -75,6 +75,35 @@ static class LoanRules
     public static object StatusChanged(Guid assetId, AssetStatus from, AssetStatus to, Guid? roomId) =>
         new { assetId, oldStatus = Support.Label(from), newStatus = Support.Label(to), roomId };
 
+    /// <summary>
+    /// US-03 / PRD 4.2: a return closes the loan from any open state, including OVERDUE and MISSING.
+    /// Caller owns the transaction. Holds, freezes and liabilities stay for staff to resolve (FR-6.8).
+    /// </summary>
+    public static async Task<Loan?> CloseAsync(TamsDbContext db, Outbox outbox, Guid loanId, DateTimeOffset now,
+        Guid? returnedByStudentId, Guid? stationId, Guid? actorUserId, Guid? returnRoomId, string? note, CancellationToken ct)
+    {
+        var claimed = await db.Loans
+            .Where(l => l.Id == loanId && (l.Status == LoanStatus.Active || l.Status == LoanStatus.Overdue || l.Status == LoanStatus.Missing))
+            .ExecuteUpdateAsync(u => u
+                .SetProperty(l => l.Status, LoanStatus.Returned)
+                .SetProperty(l => l.ReturnedAt, now)
+                .SetProperty(l => l.ReturnedByStudentId, returnedByStudentId)
+                .SetProperty(l => l.ReturnStationId, stationId), ct);
+        if (claimed == 0) return null;
+
+        var loan = await db.Loans.AsNoTracking().FirstAsync(l => l.Id == loanId, ct);
+        var asset = await db.Assets.FirstAsync(a => a.Id == loan.AssetId, ct);
+        var from = asset.Status;
+        asset.Status = AssetStatus.InStorage;
+        asset.CurrentRoomId = returnRoomId ?? asset.HomeRoomId;
+        asset.UpdatedAt = now;
+        Ledger(db, LedgerEvent.Return, loan, now, stationId, actorUserId, new { returnedByStudentId, note });
+        await db.SaveChangesAsync(ct);
+
+        outbox.Staff("asset.statusChanged", StatusChanged(asset.Id, from, AssetStatus.InStorage, asset.CurrentRoomId));
+        return loan;
+    }
+
     public static Task<bool> IsFrozenAsync(TamsDbContext db, Guid instructorId, CancellationToken ct) =>
         db.ApprovalFreezes.AnyAsync(f => f.InstructorUserId == instructorId && f.Status == PenaltyStatus.Active, ct);
 }
