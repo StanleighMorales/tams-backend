@@ -11,7 +11,7 @@ using Tams.Api.Http;
 namespace Tams.Api.Students;
 
 public sealed record SectionBody(string? Code, string? Program, short? YearLevel, string? SchoolYear, Guid? AdviserUserId);
-public sealed record StudentBody(string? StudentNo, string? FirstName, string? LastName, Guid? SectionId, RecordStatus? Status);
+public sealed record StudentBody(string? StudentNo, string? FirstName, string? LastName, Guid? SectionId, string? Status);
 
 public static class StudentEndpoints
 {
@@ -155,19 +155,29 @@ public static class StudentEndpoints
     // ---- students ----
 
     // Projection: no biometric data (fingerprint templates are never loaded or returned).
-    static IQueryable<object> StudentRows(TamsDbContext db, IQueryable<Student> q) =>
+    // Enums are read as enums and turned into UPPER_SNAKE text after materializing (EF cannot translate the helper).
+    record StudentRow(Guid Id, string StudentNo, string FirstName, string LastName, Guid SectionId, object Section,
+        StudentStanding Standing, int ActiveWarningCount, int ActiveMarkCount, bool HasActiveHold,
+        RecordStatus Status, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, DateTimeOffset? DeletedAt);
+
+    static object StudentDto(StudentRow r) => new
+    {
+        r.Id, r.StudentNo, r.FirstName, r.LastName, r.SectionId, r.Section,
+        Standing = Facilities.Support.Label(r.Standing), r.ActiveWarningCount, r.ActiveMarkCount, r.HasActiveHold,
+        Status = Facilities.Support.Label(r.Status), r.CreatedAt, r.UpdatedAt, r.DeletedAt,
+    };
+
+    static IQueryable<StudentRow> StudentRows(TamsDbContext db, IQueryable<Student> q) =>
         from s in q
         join sec in db.Sections on s.SectionId equals sec.Id
-        select (object)new
-        {
+        select new StudentRow(
             s.Id, s.StudentNo, s.FirstName, s.LastName, s.SectionId,
-            Section = new { sec.Code, sec.Program, sec.YearLevel, sec.SchoolYear },
+            new { sec.Code, sec.Program, sec.YearLevel, sec.SchoolYear },
             s.Standing, s.ActiveWarningCount, s.ActiveMarkCount, s.HasActiveHold,
-            s.Status, s.CreatedAt, s.UpdatedAt, s.DeletedAt,
-        };
+            s.Status, s.CreatedAt, s.UpdatedAt, s.DeletedAt);
 
     static async Task<IResult> ListStudents(TamsDbContext db, ClaimsPrincipal user, string? q, Guid? sectionId,
-        string? schoolYear, RecordStatus? status, bool? includeDeleted, int? page, int? pageSize, CancellationToken ct)
+        string? schoolYear, string? status, bool? includeDeleted, int? page, int? pageSize, CancellationToken ct)
     {
         if (includeDeleted == true && !CanSeeDeleted(user))
             return Problems.Forbidden("INCLUDE_DELETED_FORBIDDEN", "Only ADMIN and TECH_STAFF can list deleted students.");
@@ -176,7 +186,11 @@ public static class StudentEndpoints
         var query = db.Students.AsNoTracking().AsQueryable();
         if (includeDeleted != true) query = query.Where(s => s.DeletedAt == null);
         if (sectionId is { } sid) query = query.Where(s => s.SectionId == sid);
-        if (status is { } st) query = query.Where(s => s.Status == st);
+        if (status is not null)
+        {
+            if (!Facilities.Support.TryParse<RecordStatus>(status, out var st)) return Facilities.Support.BadEnum<RecordStatus>("status");
+            query = query.Where(s => s.Status == st);
+        }
         if (!string.IsNullOrWhiteSpace(schoolYear))
             query = query.Where(s => db.Sections.Any(x => x.Id == s.SectionId && x.SchoolYear == schoolYear));
         if (!string.IsNullOrWhiteSpace(q))
@@ -187,8 +201,9 @@ public static class StudentEndpoints
         }
 
         var total = await query.CountAsync(ct);
-        var items = await StudentRows(db, query.OrderBy(s => s.LastName).ThenBy(s => s.FirstName).ThenBy(s => s.StudentNo)
-            .Skip((p - 1) * size).Take(size)).ToListAsync(ct);
+        var items = (await StudentRows(db, query.OrderBy(s => s.LastName).ThenBy(s => s.FirstName).ThenBy(s => s.StudentNo)
+            .Skip((p - 1) * size).Take(size)).ToListAsync(ct))
+            .Select(StudentDto).ToList();
         return Results.Ok(new { items, page = p, pageSize = size, total });
     }
 
@@ -197,7 +212,7 @@ public static class StudentEndpoints
         var showDeleted = CanSeeDeleted(user);
         var row = await StudentRows(db, db.Students.AsNoTracking().Where(s => s.Id == id && (showDeleted || s.DeletedAt == null)))
             .FirstOrDefaultAsync(ct);
-        return row is null ? Problems.NotFound("STUDENT_NOT_FOUND", "Student not found.") : Results.Ok(row);
+        return row is null ? Problems.NotFound("STUDENT_NOT_FOUND", "Student not found.") : Results.Ok(StudentDto(row));
     }
 
     static object StudentAudit(Student s) => new { s.StudentNo, s.SectionId, s.Status, s.DeletedAt };
@@ -229,7 +244,11 @@ public static class StudentEndpoints
         }
         s.FirstName = b.FirstName!.Trim();
         s.LastName = b.LastName!.Trim();
-        if (b.Status is { } st) s.Status = st;
+        if (b.Status is not null)
+        {
+            if (!Facilities.Support.TryParse<RecordStatus>(b.Status, out var st)) return Facilities.Support.BadEnum<RecordStatus>("status");
+            s.Status = st;
+        }
         s.UpdatedAt = DateTimeOffset.UtcNow;
 
         Audit(db, http, "STUDENT_UPDATE", "student", s.Id, before, StudentAudit(s));
