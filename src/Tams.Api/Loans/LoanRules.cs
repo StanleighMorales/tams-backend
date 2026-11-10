@@ -62,4 +62,7 @@ static class LoanRules
 
     public static object StatusChanged(Guid assetId, AssetStatus from, AssetStatus to, Guid? roomId) =>
         new { assetId, oldStatus = Support.Label(from), newStatus = Support.Label(to), roomId };
+
+    public static Task<bool> IsFrozenAsync(TamsDbContext db, Guid instructorId, CancellationToken ct) =>
+        db.ApprovalFreezes.AnyAsync(f => f.InstructorUserId == instructorId && f.Status == PenaltyStatus.Active, ct);
 }

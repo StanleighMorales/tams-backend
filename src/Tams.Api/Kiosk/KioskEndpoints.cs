@@ -124,8 +124,13 @@ public static class KioskEndpoints
             if (fail is null)
             {
                 session.Type = SessionType.Checkout;
-                session.Status = SessionStatus.AwaitingFingerprint;
-                lcd = [Instr(user!), "Place finger on", "sensor", ""];
+                // FR-2.3 / step 2 of F1: a frozen instructor's card is refused at the tap.
+                if (await LoanRules.IsFrozenAsync(db, user!.Id, ct)) fail = ErrorCodes.InstructorFrozen;
+                else
+                {
+                    session.Status = SessionStatus.AwaitingFingerprint;
+                    lcd = [Instr(user), "Place finger on", "sensor", ""];
+                }
             }
         }
 
@@ -197,6 +202,16 @@ public static class KioskEndpoints
         var student = await db.Students.AsNoTracking().FirstAsync(x => x.Id == studentId, ct);
         s.StudentId = student.Id;
         string? fail = null;
+        if (s.Type == SessionType.Checkout) // returns are always allowed, even for blocked students
+        {
+            var block = await settings.GetIntAsync(SettingKeys.MarksBeforeBlock, ct);
+            fail = student.Status != RecordStatus.Active ? "STUDENT_INACTIVE"
+                : await db.NonComplianceMarks.CountAsync(m => m.StudentId == student.Id && m.Status == PenaltyStatus.Active, ct) >= block
+                    ? ErrorCodes.StudentBlocked
+                : await db.ProfileHolds.AnyAsync(h => h.StudentId == student.Id && h.Status == PenaltyStatus.Active, ct)
+                    ? "STUDENT_ON_HOLD"
+                : null;
+        }
 
         if (fail is not null) await EndAsync(db, s, SessionStatus.Failed, fail, Denied(s, fail), outbox, now, ct);
         else
