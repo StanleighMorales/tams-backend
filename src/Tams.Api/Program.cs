@@ -94,6 +94,7 @@ app.MapSettingsEndpoints();
 app.MapAuditLogEndpoints();
 app.MapKioskEndpoints();
 app.MapApprovalEndpoints();
+app.MapLoanEndpoints();
 
 // Compose healthcheck polls this, and it is the first thing to check after a deploy.
 app.MapGet("/health", async (TamsDbContext db, ILogger<Program> logger, CancellationToken ct) =>

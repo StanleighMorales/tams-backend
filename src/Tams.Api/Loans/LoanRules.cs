@@ -62,6 +62,15 @@ static class LoanRules
 
     public static string? Json(object? o) => o is null ? null : JsonSerializer.Serialize(o, JsonSerializerOptions.Web);
 
+    /// <summary>audit_log row for a system or staff action (FR-6.10); saved with the caller's unit of work.</summary>
+    public static void Audit(TamsDbContext db, string action, string entityType, Guid entityId, object? after,
+        Guid? actor = null, object? before = null, string? ip = null, Guid? stationId = null) =>
+        db.AuditLog.Add(new AuditLogEntry
+        {
+            ActorUserId = actor, ActorStationId = stationId, Action = action, EntityType = entityType, EntityId = entityId,
+            Before = Json(before), After = Json(after), IpAddress = ip, CreatedAt = DateTimeOffset.UtcNow,
+        });
+
     /// <summary>FR-2.4: append-only ledger row (the database rejects UPDATE and DELETE).</summary>
     public static void Ledger(TamsDbContext db, LedgerEvent evt, Loan loan, DateTimeOffset at, Guid? stationId = null,
         Guid? actor = null, object? details = null, DateTimeOffset? approvalDecidedAt = null) =>
