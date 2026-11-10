@@ -46,7 +46,9 @@ certificate warning) with the Scalar UI at `http://localhost:8080/scalar`. Sign 
   the `STORE-1` room). To start over: `docker compose down -v`.
 - **Tests:** `dotnet test` runs the endpoint tests against a throwaway PostgreSQL in Docker.
 
-The `docker-compose.dev.yml` file publishes the API port directly; never use it on the VPS.
+If port 8080 is already in use on your machine (Apache/XAMPP, for example), set `API_PORT=18080` in `.env` and use
+that port instead. `docker-compose.dev.yml` also supplies a throwaway JWT key, so `.env` needs no `JWT_KEY` here.
+Never use that file on the VPS: its key is public and it exposes the API without Caddy.
 
 ## API docs and error format
 
