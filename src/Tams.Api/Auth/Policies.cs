@@ -25,7 +25,7 @@ public static class Policies
     // (PRD 6.2, 10.2), not by a user JWT.
     // Room stations post scans and heartbeats to /stations/{code}/... (PRD 6.3), checked by StationAuth.IsDeviceAllowed.
     public static readonly string[] AnonymousRoutes =
-        ["/health", "/auth/login", "/auth/refresh", "/openapi", "/scalar", "/kiosk",
+        ["/health", "/auth/login", "/auth/refresh", "/openapi", "/scalar", "/kiosk", "/sim",
          "/stations/{code}/scans", "/stations/{code}/heartbeat"];
 
     public static IServiceCollection AddTamsPolicies(this IServiceCollection services) =>

@@ -127,6 +127,14 @@ app.MapGet("/health", async (TamsDbContext db, ILogger<Program> logger, Cancella
         statusCode: StatusCodes.Status503ServiceUnavailable);
 }).AllowAnonymous();
 
+// Development only: the interactive kiosk simulator (docs/SIMULATOR.md). Same origin as the API, so no CORS.
+if (app.Environment.IsDevelopment())
+{
+    var simPage = Path.Combine(AppContext.BaseDirectory, "Sim", "kiosk-sim.html");
+    app.MapGet("/sim", () => File.Exists(simPage) ? Results.File(simPage, "text/html; charset=utf-8") : Results.NotFound())
+        .AllowAnonymous().ExcludeFromDescription();
+}
+
 if (app.Environment.IsDevelopment()) AuthorizationCoverage.LogViolations(app); // keep after the last Map* call
 
 app.Run();

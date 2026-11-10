@@ -93,6 +93,7 @@ src/Tams.Api/Data/      TamsDbContext, entities, enums, migrations (schema v1)
 src/Tams.Api/Kiosk/     kiosk sessions, approvals, room scans, heartbeats
 src/Tams.Api/Loans/     loan rules and penalties, loans, anomalies, dashboard, LoanSweeper
 docs/STATUS.md          what is built, decisions, open questions
+docs/SIMULATOR.md      interactive kiosk simulator served at /sim in Development
 ```
 
 ## Kiosk and stations

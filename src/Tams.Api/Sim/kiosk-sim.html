@@ -1,0 +1,639 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TAMS Kiosk Simulator</title>
+<style>
+:root{--bg:#f4f5f7;--panel:#fff;--ink:#1b1f24;--mute:#5b6570;--line:#d5dae0;--accent:#1f6feb;--ok:#1a7f37;--bad:#cf222e;--warn:#9a6700;--lcd-bg:#0d3b24;--lcd-fg:#9dff9d;--code:#eef0f3}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0f1317;--panel:#171c22;--ink:#e6e9ed;--mute:#98a2ad;--line:#2c343d;--accent:#58a6ff;--ok:#3fb950;--bad:#f85149;--warn:#d29922;--lcd-bg:#06210f;--lcd-fg:#7dff7d;--code:#0f1317}}
+:root[data-theme=dark]{--bg:#0f1317;--panel:#171c22;--ink:#e6e9ed;--mute:#98a2ad;--line:#2c343d;--accent:#58a6ff;--ok:#3fb950;--bad:#f85149;--warn:#d29922;--lcd-bg:#06210f;--lcd-fg:#7dff7d;--code:#0f1317}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.4 system-ui,sans-serif}
+header{padding:10px 16px;border-bottom:1px solid var(--line);background:var(--panel);display:flex;flex-wrap:wrap;gap:10px 16px;align-items:end}
+header h1{font-size:17px;margin:0 8px 0 0}
+main{padding:12px 16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:12px;max-width:1700px;margin:auto}
+section{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px;min-width:0}
+section h2{font-size:14px;margin:0 0 2px}
+section h2 small{font-weight:400;color:var(--mute)}
+.wide{grid-column:1/-1}
+label{display:flex;flex-direction:column;font-size:12px;color:var(--mute);gap:2px}
+label.inline{flex-direction:row;align-items:center;gap:6px}
+input,select,button,textarea{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:5px 8px;min-width:0}
+input[type=checkbox]{padding:0}
+input[type=range]{padding:0}
+button{cursor:pointer;background:var(--code)}
+button:hover{border-color:var(--accent)}
+button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+button.danger{color:var(--bad)}
+button:disabled{opacity:.5;cursor:not-allowed}
+:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:end;margin:6px 0}
+.hint{color:var(--mute);font-size:12px;margin:4px 0}
+.lcd{background:var(--lcd-bg);color:var(--lcd-fg);font:18px/1.25 ui-monospace,Consolas,monospace;padding:10px 12px;border-radius:6px;border:3px solid #333;white-space:pre;overflow:hidden;letter-spacing:.5px}
+.lcd.off{opacity:.35}
+.pill{display:inline-block;border-radius:99px;padding:1px 8px;font-size:12px;background:var(--code);border:1px solid var(--line)}
+.pill.ok{color:var(--ok)}.pill.bad{color:var(--bad)}.pill.warn{color:var(--warn)}
+.led{display:inline-block;width:14px;height:14px;border-radius:50%;background:var(--line);vertical-align:middle}
+.led.green{background:#2ea043;box-shadow:0 0 8px #2ea043}.led.red{background:#f85149;box-shadow:0 0 8px #f85149}
+table{border-collapse:collapse;width:100%;font-size:12px}
+th,td{border-bottom:1px solid var(--line);padding:3px 6px;text-align:left;white-space:nowrap}
+.scroll{overflow:auto;max-height:260px}
+tr.click{cursor:pointer}tr.click:hover{background:var(--code)}
+pre{background:var(--code);padding:6px 8px;border-radius:6px;overflow:auto;max-height:220px;margin:6px 0;font-size:12px}
+#log{max-height:360px;overflow:auto;font:12px/1.35 ui-monospace,Consolas,monospace}
+#log div{border-bottom:1px solid var(--line);padding:2px 0}
+#log .s2{color:var(--ok)}#log .s4,#log .s5,#log .s0{color:var(--bad)}#log .note{color:var(--accent)}#log .poll{opacity:.55}
+body:not(.showpolls) #log .poll{display:none}
+video,canvas.cam{width:100%;max-width:240px;background:#000;border-radius:6px;display:block}
+.card{border:1px solid var(--line);border-radius:6px;padding:6px 8px;margin:6px 0}
+.scen{display:flex;flex-wrap:wrap;gap:6px}
+</style>
+</head>
+<body>
+<header>
+  <h1>TAMS Kiosk Simulator</h1>
+  <label>API base URL<input id="base" size="22" autocomplete="off"></label>
+  <label>Counter kiosk <small>station_code</small><input id="station" size="10" autocomplete="off"></label>
+  <label>Room reader <small>station_code</small><input id="roomStation" size="10" autocomplete="off"></label>
+  <label class="inline"><input type="checkbox" id="wifi" checked> Wi-Fi on</label>
+  <label class="inline"><input type="checkbox" id="mute"> Mute buzzer</label>
+  <label class="inline"><input type="checkbox" id="showPolls"> Show polls in log</label>
+  <span class="hint">Simulates hardware only: the backend is real. Every call is in the log.</span>
+</header>
+<main>
+
+<section aria-labelledby="h-net">
+  <h2 id="h-net">Network and heartbeat <small>ESP32 Wi-Fi, FR-8.1</small></h2>
+  <div class="row">
+    <label>Interval (s)<input id="hbInterval" type="number" min="1" max="600" value="30" style="width:80px"></label>
+    <label>Jitter +/- (s)<input id="hbJitter" type="number" min="0" max="30" value="2" style="width:80px"></label>
+    <label class="inline"><input type="checkbox" id="hbKiosk" checked> kiosk</label>
+    <label class="inline"><input type="checkbox" id="hbRoom" checked> room reader</label>
+    <button id="hbNow">Send now</button>
+  </div>
+  <div class="hint" id="hbStatus">Heartbeats start with the page.</div>
+  <div class="hint">Wi-Fi off stops polling and heartbeats. The station goes Warning then Offline within a few windows (US-15). Station health (needs a staff login below):</div>
+  <div id="health" class="hint">-</div>
+</section>
+
+<section aria-labelledby="h-pn">
+  <h2 id="h-pn">PN532 reader <small>cards and item tags</small></h2>
+  <div class="row">
+    <label>Auth card<select id="cardSel">
+      <option value="04A1B2C3">Instructor Ina (04A1B2C3)</option>
+      <option value="DEADBEEF">Unknown card (DEADBEEF)</option>
+      <option value="">Custom UID...</option></select></label>
+    <label>Card UID<input id="cardUid" size="12" value="04A1B2C3" autocomplete="off"></label>
+    <button id="tapCard" class="primary">Tap card (start CHECKOUT)</button>
+  </div>
+  <div class="row">
+    <button id="startReturn">Start RETURN (no card)</button>
+  </div>
+  <div class="row">
+    <label>Item tag<select id="tagSel">
+      <option value="E2000017221101441890">LT-001 Dell Latitude</option>
+      <option value="04A1B2C3D4E5F6">LT-002 ThinkPad</option>
+      <option value="0000DEAD0000">Unknown tag</option>
+      <option value="">Custom UID...</option></select></label>
+    <label>Tag UID<input id="tagUid" size="22" value="E2000017221101441890" autocomplete="off"></label>
+  </div>
+  <div class="row">
+    <button id="tapTag" class="primary">Tap tag on kiosk (ASSET)</button>
+    <button id="tapRoom">Tap tag at room door</button>
+    <span>Room LED <span class="led" id="roomLed" role="img" aria-label="room LED"></span> <span id="roomRes" class="hint"></span></span>
+  </div>
+</section>
+
+<section aria-labelledby="h-fp">
+  <h2 id="h-fp">AS608 fingerprint <small>FR-1.3</small></h2>
+  <div class="row">
+    <label>Student no.<input id="studentNo" list="studentList" size="12" value="2024-0001" autocomplete="off"></label>
+    <datalist id="studentList"><option value="2024-0001"><option value="2024-0002"><option value="2024-0003"><option value="2024-0004"></datalist>
+    <label>Finger index (0-9)<input id="fingerIdx" type="number" min="0" max="9" value="1" style="width:70px"></label>
+  </div>
+  <div class="row">
+    <label>Noise (bytes flipped): <output id="noiseOut">0</output><input id="noise" type="range" min="0" max="16" value="0"></label>
+    <label class="inline"><input type="checkbox" id="wrongFinger"> Wrong finger (random template)</label>
+  </div>
+  <div class="row">
+    <button id="finger" class="primary">Place finger</button>
+  </div>
+  <div class="hint">ponytail: the API matcher is a placeholder (exact template equality until TAMS-58), so keep noise at 0. Raise it to see recognition fail; it becomes a calibration knob once a real matcher lands. Template = bytes derived from student no. + finger index. The student must be enrolled first (Enrollment below, or a scenario does it).</div>
+  <div class="row">
+    <button id="enroll">Enrollment mode: start on kiosk (needs staff login)</button>
+  </div>
+  <div class="hint">Staff starts a session, the kiosk idle poll picks it up, then Place finger and OK (confirm).</div>
+</section>
+
+<section class="wide" aria-labelledby="h-kiosk">
+  <h2 id="h-kiosk">Counter kiosk <small>LCD2004, buttons, buzzer, webcam</small></h2>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:14px">
+    <div>
+      <div class="lcd" id="lcd" role="status" aria-live="polite" aria-label="LCD 4 by 20"></div>
+      <div class="row">
+        <span class="pill" id="stat">idle</span>
+        <span>nextStep: <b id="next">-</b></span>
+        <span class="hint" id="fail"></span>
+      </div>
+      <div class="row">
+        <button id="ok" class="primary" aria-label="Confirm (OK button)">OK / Confirm</button>
+        <button id="cancel" class="danger" aria-label="Cancel (X button)">X / Cancel</button>
+        <button id="beep" title="Unlock browser audio">Test buzzer</button>
+      </div>
+    </div>
+    <div>
+      <b>Counter webcam</b>
+      <video id="video" autoplay muted playsinline hidden></video>
+      <canvas id="cam" class="cam" width="320" height="240" aria-label="Webcam preview"></canvas>
+      <div class="row">
+        <button id="camStart">Use real camera</button>
+        <label class="inline"><input type="checkbox" id="autoPhoto" checked> Auto capture on PHOTO step</label>
+        <label class="inline"><input type="checkbox" id="camFault"> Camera error</label>
+        <button id="shoot">Capture now</button>
+      </div>
+      <div class="hint">Camera error: the kiosk retries once, then reports failure (no file) and the API denies with PHOTO_FAILED.</div>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="h-phone">
+  <h2 id="h-phone">Instructor phone <small>F2 approval</small></h2>
+  <div class="row">
+    <label>Email<input id="phEmail" size="20" autocomplete="off"></label>
+    <label>Password<input id="phPw" type="password" size="12" autocomplete="off"></label>
+    <button id="phLogin" class="primary">Log in</button>
+  </div>
+  <div class="hint">Live: <span class="pill" id="phLive">offline</span> <span id="phWho"></span></div>
+  <div id="phFreeze" class="hint"></div>
+  <div id="pending"></div>
+  <b>Live events</b>
+  <div id="events" class="scroll hint"></div>
+</section>
+
+<section aria-labelledby="h-staff">
+  <h2 id="h-staff">Admin and loans <small>GET /loans</small></h2>
+  <div class="row">
+    <label>Email<input id="stEmail" size="20" autocomplete="off"></label>
+    <label>Password<input id="stPw" type="password" size="12" autocomplete="off"></label>
+    <button id="stLogin" class="primary">Log in</button>
+    <button id="loansRefresh">Refresh loans</button>
+    <label class="inline"><input type="checkbox" id="loansAuto" checked> auto</label>
+  </div>
+  <div class="hint">Admin, tech or custodian. <span id="stWho"></span> Click a row for loan detail.</div>
+  <div class="scroll"><table id="loans" aria-label="Loans"><thead><tr><th>Loan</th><th>Asset</th><th>Student</th><th>Status</th><th>Custody</th><th>Room</th><th>Due</th></tr></thead><tbody></tbody></table></div>
+  <pre id="loanDetail" hidden></pre>
+</section>
+
+<section class="wide" aria-labelledby="h-scen">
+  <h2 id="h-scen">Scenarios <small>drive the panels above automatically</small></h2>
+  <div class="row">
+    <label>Phone destination room<select id="scRoom"><option value="">first non-storage room</option></select></label>
+    <label>Class length (h)<select id="scLen"><option value="90">1.5</option><option value="120">2</option><option value="150">2.5</option><option value="180">3</option></select></label>
+  </div>
+  <div class="scen" id="scen"></div>
+  <div class="hint">Scenarios use the card, tag, student and student-enrolment fields above and the two logins (staff login also auto-enrolls the student if needed). <span id="scStatus"></span></div>
+</section>
+
+<section class="wide" aria-labelledby="h-log">
+  <h2 id="h-log">Event log <small>every request and response: method, URL, status, ms</small></h2>
+  <div class="row"><button id="logClear">Clear</button><button id="logCopy">Copy as text</button></div>
+  <div id="log" aria-live="off"></div>
+</section>
+</main>
+
+<script>
+"use strict";
+// ponytail: one file, no framework, no build. Hardware is simulated; the backend is the real API.
+const $ = id => document.getElementById(id);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const DEFAULTS = {
+  base: "/api", station: "KIOSK-1", roomStation: "ROOM-101", hbInterval: 30, hbJitter: 2, hbKiosk: true, hbRoom: true,
+  cardUid: "04A1B2C3", tagUid: "E2000017221101441890", studentNo: "2024-0001", fingerIdx: 1, noise: 0,
+  autoPhoto: true, mute: false, showPolls: false, scLen: "90",
+  phEmail: "instructor@tams.test", phPw: "Demo#Pass123", stEmail: "admin@tams.test", stPw: "Admin#Pass123", loansAuto: true,
+};
+const SAVED = ["base","station","roomStation","hbInterval","hbJitter","hbKiosk","hbRoom","cardUid","tagUid","studentNo","fingerIdx","noise","autoPhoto","mute","showPolls","scLen","phEmail","stEmail","loansAuto"];
+let cfg = { ...DEFAULTS };
+try { Object.assign(cfg, JSON.parse(localStorage.getItem("tams-sim") || "{}")); } catch { /* private window: run on defaults */ }
+function saveCfg() { try { localStorage.setItem("tams-sim", JSON.stringify(Object.fromEntries(SAVED.map(k => [k, cfg[k]])))); } catch { /* ignore */ } }
+for (const k of Object.keys(DEFAULTS)) {
+  const el = $(k); if (!el) continue;
+  if (el.type === "checkbox") el.checked = !!cfg[k]; else el.value = cfg[k];
+  el.addEventListener("input", () => { cfg[k] = el.type === "checkbox" ? el.checked : el.value; saveCfg(); if (k === "showPolls") document.body.classList.toggle("showpolls", el.checked); if (k === "noise") $("noiseOut").textContent = el.value; });
+}
+$("noiseOut").textContent = cfg.noise;
+document.body.classList.toggle("showpolls", !!cfg.showPolls);
+const wifiOn = () => $("wifi").checked;
+
+// ---------------------------------------------------------------- log + api
+const logEl = $("log");
+function logNote(text) { const d = document.createElement("div"); d.className = "note"; d.textContent = new Date().toLocaleTimeString() + "  # " + text; logEl.prepend(d); }
+function logLine(cls, text, detail, poll) {
+  const d = document.createElement("div"); d.className = cls + (poll ? " poll" : "");
+  const det = document.createElement("details"); const sum = document.createElement("summary"); sum.textContent = new Date().toLocaleTimeString() + "  " + text;
+  const pre = document.createElement("pre"); pre.textContent = detail; det.append(sum, pre); d.append(det); logEl.prepend(d);
+  while (logEl.childElementCount > 400) logEl.lastChild.remove();
+}
+$("logClear").onclick = () => { logEl.textContent = ""; };
+$("logCopy").onclick = async () => { try { await navigator.clipboard.writeText([...logEl.querySelectorAll("summary,.note")].map(e => e.textContent).reverse().join("\n")); } catch { /* clipboard blocked */ } };
+
+const actors = { phone: { tag: "PHONE" }, staff: { tag: "STAFF" } };
+function url(path) { return cfg.base.replace(/\/$/, "") + path; }
+/** opts: body, form, station (send X-Station-Code), hw (Wi-Fi gated), actor, poll */
+async function api(method, path, o = {}) {
+  const tag = o.tag || (o.actor ? actors[o.actor].tag : "HW");
+  if (o.hw && !wifiOn()) { logLine("s0", `${tag} ${method} ${path} -> BLOCKED (Wi-Fi off)`, "", o.poll); return { status: 0, ok: false, data: null, offline: true }; }
+  const headers = {};
+  if (o.station) headers["X-Station-Code"] = cfg.station;
+  if (o.actor && actors[o.actor].token) headers.Authorization = "Bearer " + actors[o.actor].token;
+  let body;
+  if (o.form) body = o.form; else if (o.body !== undefined) { headers["Content-Type"] = "application/json"; body = JSON.stringify(o.body); }
+  const t0 = performance.now(); let res, data = null, text = "";
+  try { res = await fetch(url(path), { method, headers, body }); text = await res.text(); try { data = text ? JSON.parse(text) : null; } catch { data = null; } }
+  catch (e) { logLine("s0", `${tag} ${method} ${path} -> network error ${e.message}`, "", o.poll); return { status: 0, ok: false, data: null, offline: true }; }
+  const ms = Math.round(performance.now() - t0);
+  const code = data && data.code ? " " + data.code : "";
+  logLine("s" + Math.floor(res.status / 100), `${tag} ${method} ${path} -> ${res.status}${code} ${ms}ms`,
+    `request: ${o.form ? "[multipart " + (o.form.get("file") ? o.form.get("file").size + " bytes JPEG" : "no file") + "]" : o.body !== undefined ? JSON.stringify(redact(o.body)) : "(none)"}\nresponse: ${text.slice(0, 2000)}`, o.poll);
+  if (res.status === 401 && o.actor && !o.retried && await relogin(o.actor)) return api(method, path, { ...o, retried: true });
+  return { status: res.status, ok: res.ok, data };
+}
+const redact = b => b && typeof b === "object" ? Object.fromEntries(Object.entries(b).map(([k, v]) => [k, /password|template/i.test(k) ? "[hidden]" : v])) : b;
+
+async function login(actor, email, password) {
+  const a = actors[actor]; a.email = email; a.password = password;
+  const r = await api("POST", "/auth/login", { body: { email, password }, tag: a.tag });
+  if (!r.ok) { a.token = null; return false; }
+  a.token = r.data.accessToken; a.refresh = r.data.refreshToken; a.user = r.data.user; return true;
+}
+async function relogin(actor) {
+  const a = actors[actor];
+  if (a.refresh) {
+    const r = await api("POST", "/auth/refresh", { body: { refreshToken: a.refresh }, tag: a.tag });
+    if (r.ok) { a.token = r.data.accessToken; a.refresh = r.data.refreshToken; return true; }
+  }
+  return a.email ? login(actor, a.email, a.password) : false;
+}
+
+// ---------------------------------------------------------------- buzzer (WebAudio)
+let audio;
+function tone(freq, ms, type = "square", at = 0) {
+  if ($("mute").checked) return;
+  try {
+    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+    const o = audio.createOscillator(), g = audio.createGain(), t = audio.currentTime + at;
+    o.type = type; o.frequency.value = freq; g.gain.value = 0.05; o.connect(g); g.connect(audio.destination); o.start(t); o.stop(t + ms / 1000);
+  } catch { /* audio blocked until a gesture */ }
+}
+const SOUNDS = {
+  FINGERPRINT: () => tone(660, 90), ASSET: () => tone(784, 90), PHOTO: () => tone(523, 60), WAIT: () => tone(440, 60),
+  CONFIRM: () => { tone(880, 90); tone(880, 90, "square", .15); },
+  OK: () => { tone(523, 110, "sine"); tone(659, 110, "sine", .12); tone(784, 160, "sine", .24); },
+  DENY: () => tone(160, 450, "sawtooth"),
+};
+$("beep").onclick = () => SOUNDS.OK();
+
+// ---------------------------------------------------------------- LCD + kiosk state
+const K = { view: null, session: null, photoBusy: false, last: "" };
+function lcdSet(lines, off) {
+  const l = [...lines, "", "", "", ""].slice(0, 4).map(s => (s || "").slice(0, 20));
+  $("lcd").textContent = l.join("\n"); $("lcd").classList.toggle("off", !!off);
+}
+function render(v) {
+  K.view = v; K.session = v && !v.finished ? v.sessionId : null;
+  lcdSet(v.lcdLines || []);
+  $("stat").textContent = (v.type || "") + " " + (v.status || ""); $("next").textContent = v.nextStep || "-"; $("fail").textContent = v.failureCode || "";
+  $("stat").className = "pill " + (v.status === "COMPLETED" ? "ok" : v.finished ? "bad" : "warn");
+  const key = v.sessionId + v.status + v.nextStep;
+  if (key !== K.last) {
+    K.last = key;
+    if (v.finished) { (v.status === "COMPLETED" ? SOUNDS.OK : SOUNDS.DENY)(); refreshLoansSoon(); } else (SOUNDS[v.nextStep] || (() => {}))();
+    if (v.nextStep === "PHOTO" && $("autoPhoto").checked) autoPhoto();
+  }
+  return v;
+}
+function offlineLcd() { lcdSet(["No Wi-Fi", "Reconnecting...", "", ""], true); }
+async function kiosk(method, path, o = {}) {
+  const r = await api(method, path, { station: true, hw: true, tag: "KIOSK", ...o });
+  if (r.offline && !r.status) offlineLcd();
+  return r;
+}
+const stationCode = () => encodeURIComponent(cfg.station);
+async function kStart(type, card) {
+  const body = type === "RETURN" ? { type } : { cardUid: card, ...(type ? { type } : {}) };
+  const r = await kiosk("POST", `/kiosk/${stationCode()}/sessions`, { body });
+  if (r.ok) render(r.data); return r;
+}
+const sid = () => K.session;
+async function kFinger() {
+  if (!sid()) { logNote("No open session: tap a card or start RETURN first (sending anyway is a protocol error)."); }
+  const tpl = fpTemplate(cfg.studentNo, +cfg.fingerIdx, $("wrongFinger").checked, +cfg.noise);
+  const r = await kiosk("POST", `/kiosk/sessions/${sid() || "00000000-0000-0000-0000-000000000000"}/fingerprint`, { body: { template: tpl, sensorModel: "AS608", qualityScore: 90 } });
+  if (r.ok) render(r.data); return r;
+}
+async function kTag(tag) {
+  const r = await kiosk("POST", `/kiosk/sessions/${sid() || "00000000-0000-0000-0000-000000000000"}/asset`, { body: { tagUid: tag || cfg.tagUid } });
+  if (r.ok) render(r.data); return r;
+}
+async function kConfirm() { const r = await kiosk("POST", `/kiosk/sessions/${sid()}/confirm`); if (r.ok) render(r.data); return r; }
+async function kCancel() { const r = await kiosk("POST", `/kiosk/sessions/${sid()}/cancel`); if (r.ok) render(r.data); return r; }
+async function kPhotoOnce(fault) {
+  if (fault) return null;
+  const blob = await capture(); return blob;
+}
+let photoRunning = false;
+async function autoPhoto() {
+  if (photoRunning || !sid()) return; photoRunning = true;
+  try {
+    let blob = null;
+    for (let i = 0; i < 2 && !blob; i++) { blob = await kPhotoOnce($("camFault").checked); if (!blob) logNote(`Camera capture failed (attempt ${i + 1}/2)`); }
+    const form = new FormData(); if (blob) form.append("file", blob, "photo.jpg");
+    const r = await kiosk("POST", `/kiosk/sessions/${sid()}/photo`, { form });
+    if (r.ok) render(r.data);
+  } finally { photoRunning = false; }
+}
+// polling: GET session while open; GET /kiosk/{code}/session when idle (picks up a staff-started enrollment)
+async function pollLoop() {
+  let wait = 2000;
+  if (wifiOn()) {
+    if (K.session) {
+      const r = await kiosk("GET", `/kiosk/sessions/${K.session}`, { poll: true });
+      if (r.ok) { render(r.data); wait = (r.data.pollIntervalSeconds || 2) * 1000; }
+    } else {
+      const r = await kiosk("GET", `/kiosk/${stationCode()}/session`, { poll: true });
+      if (r.ok) { wait = (r.data.pollIntervalSeconds || 2) * 1000; if (r.data.session) render(r.data.session); else if (!K.view || K.view.finished) { if (!K.idleShown) lcdSet(r.data.lcdLines); K.idleShown = true; } }
+    }
+  } else offlineLcd();
+  setTimeout(pollLoop, wait);
+}
+
+$("tapCard").onclick = () => { K.idleShown = false; kStart(null, cfg.cardUid); };
+$("startReturn").onclick = () => { K.idleShown = false; kStart("RETURN"); };
+$("tapTag").onclick = () => kTag(cfg.tagUid);
+$("finger").onclick = () => kFinger();
+$("ok").onclick = () => kConfirm();
+$("cancel").onclick = () => kCancel();
+$("cardSel").onchange = e => { if (e.target.value) { $("cardUid").value = e.target.value; cfg.cardUid = e.target.value; saveCfg(); } };
+$("tagSel").onchange = e => { if (e.target.value) { $("tagUid").value = e.target.value; cfg.tagUid = e.target.value; saveCfg(); } };
+$("wifi").onchange = () => logNote("Wi-Fi " + (wifiOn() ? "ON" : "OFF"));
+
+// ---------------------------------------------------------------- fingerprint template
+function fpTemplate(studentNo, finger, wrong, noise) {
+  const seedStr = wrong ? "wrong-" + Math.random() : `TAMS-SIM|${studentNo}|${finger}`;
+  let h = 2166136261; for (const c of seedStr) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); }
+  const rnd = () => { h |= 0; h = h + 0x6D2B79F5 | 0; let t = Math.imul(h ^ h >>> 15, 1 | h); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  const bytes = new Uint8Array(96); for (let i = 0; i < bytes.length; i++) bytes[i] = rnd() * 256;
+  for (let i = 0; i < noise; i++) bytes[Math.floor(Math.random() * bytes.length)] ^= 1 + Math.floor(Math.random() * 255);
+  return btoa(String.fromCharCode(...bytes));
+}
+
+// ---------------------------------------------------------------- camera
+let stream = null; const cam = $("cam"), cx = cam.getContext("2d");
+async function capture() {
+  if (stream) { cx.drawImage($("video"), 0, 0, cam.width, cam.height); }
+  else { // ponytail: generated frame when there is no webcam
+    const g = cx.createLinearGradient(0, 0, cam.width, cam.height); g.addColorStop(0, "#4a6fa5"); g.addColorStop(1, "#e0b84c");
+    cx.fillStyle = g; cx.fillRect(0, 0, cam.width, cam.height); cx.fillStyle = "#fff"; cx.font = "20px sans-serif";
+    cx.fillText("TAMS sim photo", 14, 40); cx.fillText(new Date().toLocaleTimeString(), 14, 70); cx.fillText(cfg.studentNo + " / " + cfg.tagUid.slice(0, 8), 14, 100);
+  }
+  return new Promise(res => cam.toBlob(b => res(b), "image/jpeg", 0.8));
+}
+capture();
+$("shoot").onclick = async () => { const b = await capture(); logNote(`Captured test frame ${b ? b.size : 0} bytes`); };
+$("camStart").onclick = async () => {
+  try { stream = await navigator.mediaDevices.getUserMedia({ video: true }); const v = $("video"); v.srcObject = stream; v.hidden = false; cam.hidden = true; await v.play(); logNote("Real camera on"); }
+  catch (e) { stream = null; logNote("Camera unavailable (" + e.name + "): using generated frames"); }
+};
+
+// ---------------------------------------------------------------- heartbeat
+const t0 = Date.now(); let hbTimer;
+async function heartbeat() {
+  const codes = [$("hbKiosk").checked && cfg.station, $("hbRoom").checked && cfg.roomStation].filter(Boolean); let msg = [];
+  for (const c of codes) {
+    const r = await api("POST", `/stations/${encodeURIComponent(c)}/heartbeat`, { hw: true, tag: "HB", body: { firmwareVersion: "1.0.3-sim", rssi: -55 - Math.floor(Math.random() * 15), uptimeS: Math.floor((Date.now() - t0) / 1000), freeHeap: 180000 - Math.floor(Math.random() * 5000) } });
+    msg.push(`${c}: ${r.offline ? "blocked" : r.status}`);
+  }
+  $("hbStatus").textContent = "Last heartbeat " + new Date().toLocaleTimeString() + " " + msg.join(", ");
+}
+function hbSchedule() {
+  const base = Math.max(1, +cfg.hbInterval || 30), j = Math.max(0, +cfg.hbJitter || 0);
+  hbTimer = setTimeout(async () => { await heartbeat(); hbSchedule(); }, Math.max(500, (base + (Math.random() * 2 - 1) * j) * 1000));
+}
+$("hbNow").onclick = heartbeat;
+
+// ---------------------------------------------------------------- phone (instructor)
+let sr = { conn: [], live: false };
+const P = { items: [], rooms: [] };
+async function loadSignalR() {
+  if (window.signalR) return true;
+  return new Promise(res => {
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.7/signalr.min.js"; // pinned
+    s.onload = () => res(true); s.onerror = () => res(false); document.head.append(s);
+  });
+}
+const EVENTS = ["approval.requested","loan.created","loan.overdue","asset.statusChanged","anomaly.raised","anomaly.resolved","instructor.frozen","instructor.unfrozen","station.healthChanged","room.occupancyChanged","warning.issued"];
+async function connectHub(actor) {
+  const a = actors[actor]; if (a.hub) { try { await a.hub.stop(); } catch { /* ignore */ } a.hub = null; }
+  if (!await loadSignalR()) { setLive(false, "no SignalR client (offline CDN): polling"); return; }
+  const hub = new signalR.HubConnectionBuilder().withUrl(url("/hubs/live"), { accessTokenFactory: () => a.token }).withAutomaticReconnect().build();
+  for (const e of EVENTS) hub.on(e, p => { addEvent(`${a.tag} ${e}`, p); if (e === "approval.requested") refreshPending(); if (/loan|asset/.test(e)) refreshLoansSoon(); });
+  hub.onclose(() => setLive(false, "hub closed: polling")); hub.onreconnected(() => setLive(true, "reconnected"));
+  try { await hub.start(); a.hub = hub; setLive(true, "SignalR connected"); logNote(`${a.tag} SignalR connected`); }
+  catch (e) { setLive(false, "hub failed (" + e.message + "): polling"); }
+}
+function setLive(on, text) { sr.live = on; const el = $("phLive"); el.textContent = text; el.className = "pill " + (on ? "ok" : "warn"); }
+function addEvent(name, p) { const d = document.createElement("div"); d.textContent = new Date().toLocaleTimeString() + " " + name + " " + JSON.stringify(p).slice(0, 160); $("events").prepend(d); while ($("events").childElementCount > 60) $("events").lastChild.remove(); }
+async function phoneLogin() {
+  const ok = await login("phone", cfg.phEmail, $("phPw").value);
+  $("phWho").textContent = ok ? `${actors.phone.user.firstName} ${actors.phone.user.lastName} (${actors.phone.user.role})` : "login failed";
+  if (ok) { connectHub("phone"); refreshPending(); } return ok;
+}
+$("phLogin").onclick = phoneLogin;
+async function refreshPending() {
+  if (!actors.phone.token) return;
+  const r = await api("GET", "/approvals/pending", { actor: "phone", poll: true }); if (!r.ok) return;
+  P.items = r.data.items; $("phFreeze").textContent = r.data.frozen ? "FROZEN: " + r.data.freezes.map(f => f.reason + " " + f.loanNo).join(", ") : "";
+  for (const it of P.items) for (const ro of it.roomOptions) if (!P.rooms.some(x => x.id === ro.id)) { P.rooms.push(ro); }
+  fillRooms(); renderPending();
+}
+function fillRooms() { const s = $("scRoom"), cur = s.value; s.length = 1; for (const r of P.rooms) s.add(new Option(`${r.code} ${r.name}`, r.id)); s.value = cur; }
+function renderPending() {
+  const box = $("pending"); box.textContent = "";
+  if (!P.items.length) { box.textContent = "No pending approvals."; box.className = "hint"; return; }
+  for (const it of P.items) {
+    const c = document.createElement("div"); c.className = "card";
+    const t = document.createElement("div"); t.textContent = `${it.student.fullName} (${it.student.studentNo}, ${it.student.sectionCode}) wants ${it.asset.assetCode} ${it.asset.name}`;
+    const img = document.createElement("img"); img.alt = "Checkout photo"; img.style.cssText = "max-width:140px;display:block;margin:4px 0;border-radius:4px";
+    fetch(url(`/approvals/${it.sessionId}/photo`), { headers: { Authorization: "Bearer " + actors.phone.token } }).then(r => r.ok ? r.blob() : null).then(b => { if (b) img.src = URL.createObjectURL(b); });
+    const room = document.createElement("select"); room.setAttribute("aria-label", "Destination room");
+    for (const ro of it.roomOptions) room.add(new Option(`${ro.code} ${ro.name}`, ro.id)); room.value = it.defaultRoomId || (it.roomOptions[0] || {}).id || "";
+    const len = document.createElement("select"); len.setAttribute("aria-label", "Class length");
+    for (const l of it.classLengthOptions) len.add(new Option(`${l / 60} h`, l)); len.value = it.defaultClassLengthMinutes;
+    const ap = document.createElement("button"); ap.textContent = "Approve"; ap.className = "primary"; ap.onclick = () => decide(it.sessionId, true, room.value, +len.value);
+    const de = document.createElement("button"); de.textContent = "Decline"; de.className = "danger"; de.onclick = () => decide(it.sessionId, false);
+    const left = document.createElement("span"); left.className = "hint"; left.textContent = " expires " + new Date(it.expiresAt).toLocaleTimeString();
+    const row = document.createElement("div"); row.className = "row"; row.append(room, len, ap, de, left); c.append(t, img, row); box.append(c);
+  }
+}
+async function decide(sessionId, approve, roomId, minutes) {
+  const r = await api("POST", `/approvals/${sessionId}/${approve ? "approve" : "decline"}`, { actor: "phone", body: approve ? { destinationRoomId: roomId, classLengthMinutes: minutes } : {} });
+  await refreshPending(); return r;
+}
+setInterval(() => { if (!sr.live) refreshPending(); }, 3000);   // polling fallback
+setInterval(() => { if (sr.live) refreshPending(); }, 15000);
+
+// ---------------------------------------------------------------- staff / loans
+async function staffLogin() {
+  const ok = await login("staff", cfg.stEmail, $("stPw").value);
+  $("stWho").textContent = ok ? `${actors.staff.user.firstName} (${actors.staff.user.role}).` : "login failed.";
+  if (ok) { connectHub("staff"); refreshLoans(); loadStudents(); } return ok;
+}
+$("stLogin").onclick = staffLogin;
+let loanTimer; function refreshLoansSoon() { clearTimeout(loanTimer); loanTimer = setTimeout(refreshLoans, 400); }
+async function refreshLoans() {
+  if (!actors.staff.token) return;
+  const r = await api("GET", "/loans?pageSize=15", { actor: "staff", poll: true }); if (!r.ok) return;
+  const tb = $("loans").tBodies[0]; tb.textContent = "";
+  for (const l of r.data.items) {
+    const tr = tb.insertRow(); tr.className = "click"; tr.tabIndex = 0;
+    const vals = [l.loanNo, l.asset && l.asset.assetCode, l.student ? l.student.studentNo : (l.coordinator ? "coord." : ""), l.status, l.custodyState, l.destinationRoom && l.destinationRoom.code, l.dueAt && new Date(l.dueAt).toLocaleTimeString()];
+    for (const v of vals) tr.insertCell().textContent = v ?? "";
+    const open = async () => { const d = await api("GET", `/loans/${l.id}`, { actor: "staff" }); const p = $("loanDetail"); p.hidden = false; p.textContent = JSON.stringify(d.data, null, 2); };
+    tr.onclick = open; tr.onkeydown = e => { if (e.key === "Enter") open(); };
+  }
+  const h = await api("GET", "/stations/health", { actor: "staff", poll: true });
+  if (h.ok) $("health").textContent = h.data.stations.map(s => `${s.stationCode}: ${s.health}${s.secondsSinceHeartbeat != null ? " (" + Math.round(s.secondsSinceHeartbeat) + "s ago)" : ""}`).join("   ");
+  return r.data.items;
+}
+$("loansRefresh").onclick = refreshLoans;
+setInterval(() => { if ($("loansAuto").checked) refreshLoans(); }, 5000);
+async function loadStudents() {
+  const r = await api("GET", "/students?pageSize=100", { actor: "staff", poll: true }); if (!r.ok) return;
+  actors.staff.students = r.data.items; const dl = $("studentList"); dl.textContent = "";
+  for (const s of r.data.items) dl.append(new Option(`${s.firstName} ${s.lastName}`, s.studentNo));
+}
+
+// ---------------------------------------------------------------- room reader + enrollment
+async function roomTap(tag) {
+  const r = await api("POST", `/stations/${encodeURIComponent(cfg.roomStation)}/scans`, { hw: true, tag: "ROOM", body: { tagUid: tag || cfg.tagUid } });
+  if (r.ok) {
+    const good = r.data.signal === "SUCCESS"; $("roomLed").className = "led " + (good ? "green" : "red"); $("roomRes").textContent = `${r.data.result} ${r.data.assetCode || ""}`;
+    (good ? SOUNDS.OK : SOUNDS.DENY)(); setTimeout(() => { $("roomLed").className = "led"; }, 2500); refreshLoansSoon();
+  }
+  return r;
+}
+$("tapRoom").onclick = () => roomTap();
+async function studentByNo(no) { if (!actors.staff.students) await loadStudents(); return (actors.staff.students || []).find(s => s.studentNo === no); }
+async function startEnrollment(studentNo, finger) {
+  if (!actors.staff.token && !await staffLogin()) { logNote("Enrollment needs a staff login"); return null; }
+  const st = await studentByNo(studentNo); if (!st) { logNote("Student not found: " + studentNo); return null; }
+  const stations = await api("GET", "/stations?pageSize=100", { actor: "staff" });
+  const sta = stations.ok && stations.data.items.find(s => s.stationCode === cfg.station.toUpperCase()); if (!sta) { logNote("Station not found: " + cfg.station); return null; }
+  const r = await api("POST", "/enrollment/sessions", { actor: "staff", body: { studentId: st.id, stationId: sta.id, fingerIndex: finger } });
+  if (!r.ok) return null;
+  K.session = null; K.idleShown = false;
+  for (let i = 0; i < 12 && !K.session; i++) { const p = await kiosk("GET", `/kiosk/${stationCode()}/session`, { poll: true }); if (p.ok && p.data.session) render(p.data.session); else await sleep(500); }
+  return K.view;
+}
+$("enroll").onclick = () => startEnrollment(cfg.studentNo, +cfg.fingerIdx);
+async function ensureEnrolled(studentNo, finger) {
+  if (!actors.staff.token && !await staffLogin()) { logNote("No staff login: assuming " + studentNo + " is enrolled"); return; }
+  const st = await studentByNo(studentNo); if (!st) return;
+  const f = await api("GET", `/students/${st.id}/fingerprints`, { actor: "staff" });
+  if (f.ok && f.data.items.some(x => x.fingerIndex === finger)) return;
+  logNote("Enrolling " + studentNo + " finger " + finger);
+  if (K.session) await kCancel();
+  const v = await startEnrollment(studentNo, finger); if (!v) return;
+  await kFinger(); if (K.view && K.view.nextStep === "CONFIRM") await kConfirm();
+}
+
+// ---------------------------------------------------------------- scenarios
+const until = async (fn, ms = 20000, step = 300) => { const t = Date.now(); for (;;) { const v = await fn(); if (v) return v; if (Date.now() - t > ms) return null; await sleep(step); } };
+const cur = () => K.view;
+const finished = () => cur() && cur().finished;
+/** One checkout through all panels. o: {card, tag, student, wrong, camFault, decision:'approve'|'decline'|'ignore', room, minutes, roomTap} */
+async function checkoutFlow(o = {}) {
+  const prevFault = $("camFault").checked, prevWrong = $("wrongFinger").checked;
+  const student = o.student || cfg.studentNo, tag = o.tag || cfg.tagUid;
+  const restore = () => { $("camFault").checked = prevFault; $("wrongFinger").checked = prevWrong; };
+  try {
+    if (o.decision !== "none-phone" && !actors.phone.token) await phoneLogin();
+    if (!o.skipEnroll && !o.wrong) await ensureEnrolled(student, +cfg.fingerIdx);
+    if (K.session) await kCancel();
+    $("camFault").checked = !!o.camFault; // before the tag tap: the PHOTO step fires straight after it
+    K.idleShown = false; await kStart(null, o.card || cfg.cardUid); if (finished()) return cur();
+    const prevStudent = cfg.studentNo; cfg.studentNo = student;
+    $("wrongFinger").checked = !!o.wrong;
+    try { for (let i = 0; i < 3 && cur().nextStep === "FINGERPRINT"; i++) await kFinger(); } finally { cfg.studentNo = prevStudent; }
+    if (finished()) return cur();
+    await kTag(tag); if (finished()) return cur();
+    if (cur().nextStep === "PHOTO") await until(() => cur().nextStep !== "PHOTO", 8000, 200);
+    if (finished() || o.decision === "ignore") { return cur(); }
+    const it = await until(async () => { await refreshPending(); return P.items.find(x => x.sessionId === cur().sessionId); }, 8000, 500);
+    if (!it) { logNote("Approval request never reached the phone"); return cur(); }
+    const room = (o.roomCode && (it.roomOptions.find(r => r.code === o.roomCode) || {}).id) || $("scRoom").value || it.roomOptions[0].id;
+    await decide(it.sessionId, o.decision !== "decline", room, o.minutes || +$("scLen").value);
+    await until(() => cur().nextStep !== "WAIT", 15000, 500);
+    if (cur().nextStep === "CONFIRM") { await kConfirm(); if (o.roomTap && cur().status === "COMPLETED") await roomTap(tag); }
+    return cur();
+  } finally { restore(); }
+}
+async function returnFlow(o = {}) {
+  await ensureEnrolled(o.student || cfg.studentNo, +cfg.fingerIdx);
+  if (K.session) await kCancel();
+  K.idleShown = false; await kStart("RETURN"); if (finished()) return cur();
+  const ps = cfg.studentNo; cfg.studentNo = o.student || ps;
+  try { await kFinger(); } finally { cfg.studentNo = ps; }
+  if (finished()) return cur(); await kTag(o.tag || cfg.tagUid); return cur();
+}
+const SCEN = [
+  ["Happy-path checkout + room check-in", async () => checkoutFlow({ roomTap: true }), r => r.status === "COMPLETED"],
+  ["Return (RETURN session)", async () => returnFlow(), r => r.status === "COMPLETED"],
+  ["Denied: unknown card", async () => { if (K.session) await kCancel(); K.idleShown = false; await kStart(null, "DEADBEEF"); return cur(); }, r => r.failureCode === "CARD_UNKNOWN"],
+  ["Denied: unknown fingerprint (3 tries)", async () => checkoutFlow({ wrong: true, skipEnroll: true }), r => r.failureCode === "FINGERPRINT_NOT_RECOGNIZED"],
+  ["Denied: unknown item tag", async () => checkoutFlow({ tag: "0000DEAD0000" }), r => r.failureCode === "TAG_UNKNOWN"],
+  ["Denied: camera error", async () => checkoutFlow({ camFault: true }), r => r.failureCode === "PHOTO_FAILED"],
+  ["Denied: instructor declines", async () => checkoutFlow({ decision: "decline" }), r => r.failureCode === "APPROVAL_DECLINED"],
+  ["Denied: approval timeout (waits)", async () => approvalTimeout(), r => r.failureCode === "APPROVAL_TIMEOUT"],
+  ["Denied: loan limit (2nd checkout)", async () => { const a = await checkoutFlow({}); if (a.status !== "COMPLETED") return a; return checkoutFlow({ tag: "04A1B2C3D4E5F6" }); }, r => r.failureCode === "LOAN_LIMIT_REACHED"],
+  ["Denied: item not on loan (return)", async () => returnFlow({ tag: "04A1B2C3D4E5F6" }), r => r.failureCode === "NOT_ON_LOAN"],
+  ["Wrong-room scan (approve LAB-102)", async () => { const a = await checkoutFlow({ roomCode: "LAB-102" }); if (a.status === "COMPLETED") { const t = await roomTap(); return { status: "WRONG_ROOM check", failureCode: t.data && t.data.result }; } return a; }, r => r.failureCode === "WRONG_ROOM"],
+];
+async function approvalTimeout() {
+  let prior = null;
+  if (actors.staff.token || await staffLogin()) {   // shorten the timeout to the 30 s minimum when we may (admin)
+    const g = await api("GET", "/settings/approval_timeout_seconds", { actor: "staff" });
+    if (g.ok) { prior = g.data.value ?? (g.data.item && g.data.item.value); const p = await api("PUT", "/settings/approval_timeout_seconds", { actor: "staff", body: { value: 30 } }); if (!p.ok) prior = null; }
+  }
+  try { const r = await checkoutFlow({ decision: "ignore" }); if (r.finished) return r; logNote("Waiting for the approval to time out..."); await until(() => finished(), 150000, 1000); return cur(); }
+  finally { if (prior != null) await api("PUT", "/settings/approval_timeout_seconds", { actor: "staff", body: { value: prior } }); }
+}
+const scenBox = $("scen"); let running = false;
+for (const [name, fn, check] of SCEN) {
+  const b = document.createElement("button"); b.textContent = name; b.dataset.name = name;
+  b.onclick = () => runScenario(name);
+  scenBox.append(b);
+}
+async function runScenario(name) {
+  if (running) return; running = true; const [, fn, check] = SCEN.find(s => s[0] === name);
+  $("scStatus").textContent = "Running: " + name; logNote("SCENARIO START " + name);
+  let res = null, err = null;
+  try { res = await fn(); } catch (e) { err = e; }
+  const pass = !err && res && check(res);
+  logNote(`SCENARIO ${pass ? "PASS" : "FAIL"} ${name}${res ? ` (status ${res.status}, failureCode ${res.failureCode || "-"})` : ""}${err ? " " + err : ""}`);
+  $("scStatus").textContent = `${pass ? "PASS" : "FAIL"}: ${name}`; running = false; refreshLoansSoon();
+  document.body.dataset.result = JSON.stringify({ name, pass: !!pass, status: res && res.status, failureCode: res && res.failureCode });
+  return pass;
+}
+window.SIM = { runScenario, SCEN, api, actors, K, checkoutFlow, returnFlow, cfg, phoneLogin, staffLogin };
+
+// ---------------------------------------------------------------- boot
+lcdSet(["TAMS Counter", "Tap auth card", "", ""]);
+pollLoop(); heartbeat().then(hbSchedule);
+// #run=<scenario index> auto-runs one scenario (headless smoke test): sets body[data-result] when done.
+const m = /run=(\d+)/.exec(location.hash); if (m && SCEN[+m[1]]) setTimeout(() => runScenario(SCEN[+m[1]][0]), 1500);
+</script>
+</body>
+</html>
