@@ -17,6 +17,9 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddTamsOpenApi();
 builder.Services.AddTamsProblemDetails();
+// Development defaults to throwing on an unparseable body, which the exception handler turns into a 500.
+// Production answers 400; make Development match so clients see the same thing everywhere.
+builder.Services.Configure<Microsoft.AspNetCore.Routing.RouteHandlerOptions>(o => o.ThrowOnBadRequest = false);
 builder.Services.AddTamsAuth(builder.Configuration);
 builder.Services.AddTamsPolicies();
 
