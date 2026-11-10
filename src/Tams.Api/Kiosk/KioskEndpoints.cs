@@ -313,7 +313,46 @@ public static class KioskEndpoints
         if (deny is not null) return deny;
         if (expired) return await FinishAsync(db, tx, outbox, hub, s!, settings, now, ct);
 
-        return InvalidState(s!.Status, "confirm");
+        if (s!.Type == SessionType.Checkout && s.Status == SessionStatus.AwaitingConfirm)
+            await CreateLoanAsync(db, settings, s, outbox, now, ct);
+        else
+            return InvalidState(s.Status, "confirm");
+
+        return await FinishAsync(db, tx, outbox, hub, s, settings, now, ct);
+    }
+
+    /// <summary>F1 step 9 / FR-1.5: the loan exists only once the instructor approved and the borrower confirmed.</summary>
+    static async Task CreateLoanAsync(TamsDbContext db, ISettings settings, CheckoutSession s, Outbox outbox, DateTimeOffset now, CancellationToken ct)
+    {
+        var asset = await db.Assets.FirstAsync(a => a.Id == s.AssetId, ct);
+        if (asset.Status != AssetStatus.AtCounter) // staff changed it meanwhile
+        {
+            await EndAsync(db, s, SessionStatus.Failed, ErrorCodes.AssetNotAvailable, Denied(s, ErrorCodes.AssetNotAvailable), outbox, now, ct);
+            return;
+        }
+        var approval = await db.Approvals.AsNoTracking().FirstAsync(a => a.SessionId == s.Id, ct);
+        var transit = await settings.GetIntAsync(SettingKeys.TransitWindow, ct);
+        var grace = (short)await settings.GetIntAsync(SettingKeys.Grace, ct);
+        var minutes = s.ClassLengthMinutes!.Value;
+        var loan = new Loan
+        {
+            Id = Guid.NewGuid(), LoanNo = await NextLoanNoAsync(db, now, ct), Type = LoanType.Standard, AssetId = asset.Id,
+            StudentId = s.StudentId, ApprovedByUserId = s.InstructorUserId, SessionId = s.Id, ApprovalId = approval.Id,
+            CheckoutStationId = s.StationId, DestinationRoomId = s.DestinationRoomId, PhotoFileId = s.PhotoFileId,
+            Status = LoanStatus.Active, CustodyState = CustodyState.AwaitingArrival, CheckedOutAt = now,
+            TransitDeadlineAt = now.AddMinutes(transit), ClassLengthMinutes = minutes, ClassEndsAt = now.AddMinutes(minutes),
+            GraceMinutes = grace, DueAt = now.AddMinutes(minutes + grace),
+        };
+        db.Loans.Add(loan);
+        asset.Status = AssetStatus.InTransit;
+        asset.CurrentRoomId = null;
+        asset.UpdatedAt = now;
+        await EndAsync(db, s, SessionStatus.Completed, null,
+            ["Borrowed! Tap item", "at room door within", $"{transit} minutes", $"Due {LocalTime.Clock(loan.DueAt)}"], outbox, now, ct);
+        await db.SaveChangesAsync(ct);
+
+        outbox.Staff("loan.created", LoanCreated(loan, asset));
+        outbox.Staff("asset.statusChanged", LoanRules.StatusChanged(asset.Id, AssetStatus.AtCounter, AssetStatus.InTransit, loan.DestinationRoomId));
     }
 
     static async Task<IResult> Cancel(Guid id, HttpContext http, TamsDbContext db, ISettings settings, IHubContext<LiveHub> hub, CancellationToken ct)
@@ -332,6 +371,13 @@ public static class KioskEndpoints
     }
 
     // ---------------------------------------------------------------- helpers
+
+    static object LoanCreated(Loan loan, Asset asset) => new
+    {
+        loanId = loan.Id, loan.LoanNo, type = Support.Label(loan.Type), assetId = asset.Id, asset.AssetCode, assetName = asset.Name,
+        loan.StudentId, loan.ApprovedByUserId, loan.CoordinatorUserId, loan.EventId, loan.DestinationRoomId,
+        loan.TransitDeadlineAt, loan.DueAt,
+    };
 
     static Task<Station?> StationAsync(TamsDbContext db, string code, CancellationToken ct)
     {

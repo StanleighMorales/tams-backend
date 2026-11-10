@@ -172,4 +172,18 @@ static class KioskSessions
         }
         return null;
     }
+
+    /// <summary>
+    /// Next loan number, L-2026-000123. The advisory lock serialises numbering across concurrent
+    /// checkouts until the caller's transaction ends.
+    /// </summary>
+    public static async Task<string> NextLoanNoAsync(TamsDbContext db, DateTimeOffset now, CancellationToken ct)
+    {
+        await db.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock(727001)", ct);
+        var prefix = $"L-{LocalTime.ToLocal(now).Year}-";
+        var last = await db.Loans.Where(l => l.LoanNo.StartsWith(prefix)).OrderByDescending(l => l.LoanNo)
+            .Select(l => l.LoanNo).FirstOrDefaultAsync(ct);
+        var n = last is null ? 1 : int.Parse(last[prefix.Length..]) + 1;
+        return $"{prefix}{n:D6}";
+    }
 }
