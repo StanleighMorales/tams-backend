@@ -205,11 +205,15 @@ public static class KioskEndpoints
         if (s.Type == SessionType.Checkout) // returns are always allowed, even for blocked students
         {
             var block = await settings.GetIntAsync(SettingKeys.MarksBeforeBlock, ct);
+            var max = await settings.GetIntAsync(SettingKeys.MaxActiveLoans, ct);
             fail = student.Status != RecordStatus.Active ? "STUDENT_INACTIVE"
                 : await db.NonComplianceMarks.CountAsync(m => m.StudentId == student.Id && m.Status == PenaltyStatus.Active, ct) >= block
                     ? ErrorCodes.StudentBlocked
                 : await db.ProfileHolds.AnyAsync(h => h.StudentId == student.Id && h.Status == PenaltyStatus.Active, ct)
                     ? "STUDENT_ON_HOLD"
+                : await db.Loans.CountAsync(l => l.StudentId == student.Id
+                    && (l.Status == LoanStatus.Active || l.Status == LoanStatus.Overdue), ct) >= max
+                    ? "LOAN_LIMIT_REACHED" // FR-1.9
                 : null;
         }
 
