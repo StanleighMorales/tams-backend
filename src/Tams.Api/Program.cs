@@ -12,6 +12,8 @@ using Tams.Api.Users;
 using Tams.Api.Students;
 using Tams.Api.Settings;
 using Tams.Api.Qr;
+using Tams.Api.Kiosk;
+using Tams.Api.Live;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -38,6 +40,7 @@ var connectionString = builder.Configuration.GetConnectionString("Default")
 builder.Services.AddDbContext<TamsDbContext>(o => o.UseNpgsql(connectionString, PgEnums.MapAll));
 builder.Services.AddTamsSettings();
 builder.Services.AddHostedService<EnrollmentSweeper>();
+builder.Services.AddSignalR(); // the kiosk flows push events through IHubContext<LiveHub>
 
 // Fingerprint templates are encrypted with Data Protection; the key ring must survive container
 // rebuilds (Compose mounts the dp-keys volume at /app/keys) or stored templates become unreadable.
@@ -87,6 +90,7 @@ app.MapQrEndpoints();
 app.MapFacilityEndpoints();
 app.MapSettingsEndpoints();
 app.MapAuditLogEndpoints();
+app.MapKioskEndpoints();
 
 // Compose healthcheck polls this, and it is the first thing to check after a deploy.
 app.MapGet("/health", async (TamsDbContext db, ILogger<Program> logger, CancellationToken ct) =>
