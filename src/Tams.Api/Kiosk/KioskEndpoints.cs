@@ -8,6 +8,7 @@ using Tams.Api.Enrollment;
 using Tams.Api.Facilities;
 using Tams.Api.Http;
 using Tams.Api.Live;
+using Tams.Api.Push;
 using Tams.Api.Loans;
 using Tams.Api.Settings;
 using static Tams.Api.Enrollment.EnrollmentSessions;
@@ -381,7 +382,7 @@ public static class KioskEndpoints
     }
 
     static async Task<IResult> Photo(Guid id, HttpContext http, TamsDbContext db, ISettings settings, IConfiguration cfg,
-        IHubContext<LiveHub> hub, CancellationToken ct)
+        IHubContext<LiveHub> hub, ApprovalPushDispatcher push, CancellationToken ct)
     {
         // Read the form by hand so a body-less POST (the kiosk reporting a camera failure) is not a 415.
         var form = http.Request.HasFormContentType ? await http.Request.ReadFormAsync(ct) : null;
@@ -408,8 +409,12 @@ public static class KioskEndpoints
         s.LcdLines = LcdJson.Write("Waiting for", "instructor approval", "", "");
         db.Approvals.Add(new Approval { Id = Guid.NewGuid(), SessionId = s.Id, InstructorUserId = s.InstructorUserId!.Value, RequestedAt = now });
         // FR-2.1: the card owner's phone gets the request as soon as the photo lands.
-        outbox.User(s.InstructorUserId, "approval.requested", await ApprovalEndpoints.RequestPayloadAsync(db, settings, s, ct));
-        return await FinishAsync(db, tx, outbox, hub, s, settings, now, ct);
+        var request = await ApprovalEndpoints.RequestPayloadAsync(db, settings, s, ct);
+        outbox.User(s.InstructorUserId, "approval.requested", request);
+        var result = await FinishAsync(db, tx, outbox, hub, s, settings, now, ct);
+        // After the commit and off the request: a push failure is logged and never reaches the kiosk (TAMS-62).
+        push.Enqueue(ApprovalPush.Build(s.InstructorUserId!.Value, request));
+        return result;
     }
 
     static async Task<IResult> Confirm(Guid id, HttpContext http, TamsDbContext db, ISettings settings, IHubContext<LiveHub> hub, CancellationToken ct)

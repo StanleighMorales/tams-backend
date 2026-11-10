@@ -17,6 +17,7 @@ using Tams.Api.Inventory;
 using Tams.Api.Kiosk;
 using Tams.Api.Live;
 using Tams.Api.Loans;
+using Tams.Api.Push;
 using Tams.Api.Violations;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -46,6 +47,7 @@ builder.Services.AddTamsSettings();
 builder.Services.AddHostedService<EnrollmentSweeper>();
 builder.Services.AddHostedService<LoanSweeper>();
 builder.Services.AddSignalR();
+builder.Services.AddTamsPush(builder.Configuration, builder.Environment);
 
 // Fingerprint templates are encrypted with Data Protection; the key ring must survive container
 // rebuilds (Compose mounts the dp-keys volume at /app/keys) or stored templates become unreadable.
@@ -103,6 +105,7 @@ app.MapViolationEndpoints();
 app.MapEventEndpoints();
 app.MapInventoryAuditEndpoints();
 app.MapNotificationEndpoints();
+app.MapDeviceTokenEndpoints();
 app.MapHub<LiveHub>("/hubs/live").RequireAuthorization(Policies.AnyUser); // PRD 6.4
 
 // Compose healthcheck polls this, and it is the first thing to check after a deploy.
