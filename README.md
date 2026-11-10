@@ -119,8 +119,11 @@ The instructor approves from the phone (`GET /api/approvals/pending`, `POST /api
 Live events (PRD 6.4) arrive over SignalR at `/hubs/live?access_token=<jwt>`. Background jobs:
 `LoanSweeper` (transit timeouts, overdue, kiosk session expiry, station health).
 
-**The fingerprint matcher is a placeholder** (exact template equality, see `docs/STATUS.md`). A real
-sensor will not match until it is replaced.
+**The fingerprint matcher is a placeholder** (TAMS-58): bit-similarity over the raw template bytes
+against an in-memory cache of decrypted templates. It tolerates noisy rescans of the same bytes but is
+not real minutiae matching; see `docs/STATUS.md`. Calibration knob: `Kiosk:MatchThreshold` (default
+0.85, range 0 to 1; env `Kiosk__MatchThreshold`). To simulate a noisy rescan, flip about 5% of the bits of
+the enrolled template and submit it as base64.
 
 ## Database migrations
 

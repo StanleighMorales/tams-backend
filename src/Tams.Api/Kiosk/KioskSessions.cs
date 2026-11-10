@@ -145,32 +145,19 @@ static class KioskSessions
     };
 
     public static string[] Denied(CheckoutSession s, string code) =>
-        [Reason(code), s.Type == SessionType.Return || s.Type == SessionType.EventReturn ? "Return failed" : "Borrow denied", "See lab staff", ""];
+        code == "FINGERPRINT_NOT_RECOGNIZED" ? ["Fingerprint not", "recognized", "See lab staff", ""] // 20-col LCD
+        : [Reason(code), s.Type == SessionType.Return || s.Type == SessionType.EventReturn ? "Return failed" : "Borrow denied", "See lab staff", ""];
 
     // ---------------------------------------------------------------- fingerprint 1:N (FR-1.3)
 
     /// <summary>
-    /// Matches the probe against every stored template, decrypted in memory and never logged.
-    /// ponytail: exact template equality, O(N) decrypts per scan. Two AS608 captures of the same finger
-    /// are not byte-identical, so a real matcher must replace this before the pilot (for example the
-    /// kiosk uploads the sensor image and the API matches it with SourceAFIS). Cache decrypted templates
-    /// in memory if N grows past a few thousand.
+    /// Matches the probe against the cached decrypted templates (see <see cref="FingerprintMatcher"/>).
+    /// Threshold: Kiosk:MatchThreshold, default <see cref="FingerprintMatcher.DefaultThreshold"/>.
     /// </summary>
     public static async Task<Guid?> MatchAsync(TamsDbContext db, IServiceProvider sp, byte[] probe, CancellationToken ct)
     {
-        var rows = await (
-            from t in db.FingerprintTemplates.AsNoTracking()
-            join s in db.Students on t.StudentId equals s.Id
-            where s.DeletedAt == null
-            select new { t.StudentId, t.Template }).ToListAsync(ct);
-        foreach (var r in rows)
-        {
-            byte[] plain;
-            try { plain = TemplateProtector.Unprotect(sp, r.Template); }
-            catch (CryptographicException) { continue; } // key ring lost: that template can never match
-            if (CryptographicOperations.FixedTimeEquals(plain, probe)) return r.StudentId;
-        }
-        return null;
+        var threshold = sp.GetRequiredService<IConfiguration>().GetValue("Kiosk:MatchThreshold", FingerprintMatcher.DefaultThreshold);
+        return FingerprintMatcher.Match(probe, await TemplateCache.GetAsync(db, sp, ct), threshold);
     }
 
     /// <summary>

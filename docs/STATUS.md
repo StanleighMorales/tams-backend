@@ -58,7 +58,7 @@ Jira (project TAMS): TAMS-19 and TAMS-21 are in Deep Review and assumed approved
 
 ## Open decisions (not made, behaviour documented in `PERMISSIONS.md`)
 
-1. **Fingerprint matching (blocks the pilot):** `KioskSessions.MatchAsync` compares decrypted templates for exact equality. Two AS608 captures of the same finger are never byte-identical, so real scans will not match. Pick a matcher. One option: the kiosk uploads the sensor image and the API matches with SourceAFIS (1:N in PostgreSQL, as FR-1.3 asks). That changes the enrollment payload too.
+1. **Fingerprint matching (placeholder, blocks the pilot):** `FingerprintMatcher` scores 1 - hamming distance over the raw template bytes and takes the best score at or above `Kiosk:MatchThreshold` (default 0.85). Decrypted templates are cached in memory (`TemplateCache`, reloaded when the live template count or newest created_at changes, or on delete). 2,000 templates match in about 2 ms warm, 30 ms cold. Three failed scans in a session deny it. Raw bytes are not minutiae, so real AS608 captures still need calibration or a real matcher (kiosk uploads the sensor image, API matches with SourceAFIS).
 2. **Push notifications:** no FCM yet, and there is no device-token registration route. Notices are `notifications` rows plus SignalR events. A phone in the background gets nothing until push is wired.
 3. **Custodian fingerprint rights:** custodians can start enrollments and delete fingerprints; FR-9.4 says "admin-initiated".
 4. **`/users` reads:** ADMIN and TECH_STAFF can read (employee numbers included). The original matrix said admin-only.
