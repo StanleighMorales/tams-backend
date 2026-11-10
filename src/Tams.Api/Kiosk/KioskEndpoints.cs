@@ -44,6 +44,7 @@ public static class KioskEndpoints
         g.MapGet("/sessions/{id:guid}", Get);
         g.MapPost("/sessions/{id:guid}/fingerprint", Fingerprint);
         g.MapPost("/sessions/{id:guid}/asset", AssetTap);
+        g.MapPost("/sessions/{id:guid}/photo", Photo).Accepts<IFormFile>("multipart/form-data");
         g.MapPost("/sessions/{id:guid}/confirm", Confirm);
         g.MapPost("/sessions/{id:guid}/cancel", Cancel);
         return app;
@@ -265,6 +266,35 @@ public static class KioskEndpoints
                 break;
             }
         }
+        return await FinishAsync(db, tx, outbox, hub, s, settings, now, ct);
+    }
+
+    static async Task<IResult> Photo(Guid id, HttpContext http, TamsDbContext db, ISettings settings, IConfiguration cfg,
+        IHubContext<LiveHub> hub, CancellationToken ct)
+    {
+        // Read the form by hand so a body-less POST (the kiosk reporting a camera failure) is not a 415.
+        var form = http.Request.HasFormContentType ? await http.Request.ReadFormAsync(ct) : null;
+        var bytes = await MediaStore.ReadAllAsync(form?.Files["file"] ?? form?.Files.FirstOrDefault(), MaxPhotoBytes, ct);
+
+        var (now, outbox) = (DateTimeOffset.UtcNow, new Outbox());
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        var (s, _, deny, expired) = await OpenAsync(db, http, id, outbox, now, ct);
+        if (deny is not null) return deny;
+        if (s!.Status != SessionStatus.AwaitingPhoto) return InvalidState(s.Status, "upload a photo");
+
+        // The kiosk retries a failed capture once itself (F1 step 5); a missing or non-JPEG upload ends the borrow.
+        if (bytes is null || !MediaStore.IsJpeg(bytes))
+        {
+            await EndAsync(db, s, SessionStatus.Failed, ErrorCodes.PhotoFailed, Denied(s, ErrorCodes.PhotoFailed), outbox, now, ct);
+            return await FinishAsync(db, tx, outbox, hub, s, settings, now, ct);
+        }
+
+        var media = await MediaStore.SaveAsync(db, cfg, MediaKind.CheckoutPhoto, "checkout", bytes, "image/jpeg", "jpg", ct);
+        s.PhotoFileId = media.Id;
+        s.Status = SessionStatus.AwaitingApproval;
+        s.ExpiresAt = now.AddSeconds(await settings.GetIntAsync(SettingKeys.ApprovalTimeout, ct));
+        s.LcdLines = LcdJson.Write("Waiting for", "instructor approval", "", "");
+        db.Approvals.Add(new Approval { Id = Guid.NewGuid(), SessionId = s.Id, InstructorUserId = s.InstructorUserId!.Value, RequestedAt = now });
         return await FinishAsync(db, tx, outbox, hub, s, settings, now, ct);
     }
 

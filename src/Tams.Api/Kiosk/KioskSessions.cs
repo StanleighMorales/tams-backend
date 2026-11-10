@@ -50,6 +50,9 @@ static class KioskSessions
             if (released > 0)
                 outbox.Staff("asset.statusChanged", LoanRules.StatusChanged(assetId, AssetStatus.AtCounter, AssetStatus.InStorage, null));
         }
+
+        var pending = await db.Approvals.FirstOrDefaultAsync(a => a.SessionId == s.Id && a.Decision == ApprovalDecision.Pending, ct);
+        if (pending is not null) pending.Decision = ApprovalDecision.Expired;
     }
 
     public static object View(CheckoutSession s, DateTimeOffset now, int pollSeconds)
