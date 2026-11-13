@@ -231,8 +231,6 @@ public static class StudentEndpoints
         if (b.Status is not null && !Facilities.Support.TryParse(b.Status, out status))
             return Facilities.Support.BadEnum<RecordStatus>("status");
 
-        var status = RecordStatus.Active;
-        if (b.Status is not null && !Facilities.Support.TryParse(b.Status, out status)) return Facilities.Support.BadEnum<RecordStatus>("status");
         var no = b.StudentNo!.Trim();
         if (await db.Students.AnyAsync(x => x.DeletedAt == null && x.StudentNo == no, ct))
             return Problems.Conflict("STUDENT_NO_TAKEN", "Another student already has this student number.");
