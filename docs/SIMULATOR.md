@@ -54,16 +54,16 @@ Wi-Fi off stops polling and heartbeats; the staff panel shows the station going 
 
 | Panel | Simulates | Backend | Tickets |
 |---|---|---|---|
-| Network and heartbeat | ESP32 Wi-Fi and heartbeat task (interval and jitter) | `POST /stations/{code}/heartbeat`, `GET /stations/health` | TAMS-79 (F8, station health) |
-| PN532 reader | card and tag reads | `POST /kiosk/{code}/sessions`, `.../asset` | TAMS-76 (PN532 firmware) |
-| AS608 fingerprint | sensor, noise knob, wrong finger, enrollment | `.../fingerprint`, `POST /enrollment/sessions` | TAMS-77 (AS608), TAMS-50 (kiosk checkout flow) |
-| Counter kiosk (LCD2004, buttons, buzzer, webcam) | 4x20 LCD from `lcdLines`, OK/X, tones per step, camera with retry and fault | `.../photo`, `.../confirm`, `.../cancel`, session polling | TAMS-78 (LCD, buzzer), TAMS-50, TAMS-51 |
-| Room reader | room tag tap, LED and tone from `signal` | `POST /stations/{code}/scans` | TAMS-79 and the room check-in story |
-| Instructor phone | approve or decline, destination room, class length | `/auth/login`, `/approvals/*`, `/hubs/live` | TAMS-51 (approval) |
-| Admin and loans | loan list and detail | `GET /loans`, `GET /loans/{id}` | TAMS-52, TAMS-53 (loans, transit) |
+| Network and heartbeat | ESP32 Wi-Fi and heartbeat task (interval and jitter) | `POST /stations/{code}/heartbeat`, `GET /stations/health` | TAMS-50 (Wi-Fi and HTTP client), TAMS-80 (room station heartbeat) |
+| PN532 reader | card and tag reads | `POST /kiosk/{code}/sessions`, `.../asset` | TAMS-51 (PN532 firmware) |
+| AS608 fingerprint | sensor, noise knob, wrong finger, enrollment | `.../fingerprint`, `POST /enrollment/sessions` | TAMS-52 (capture and upload), TAMS-53 (enrollment mode) |
+| Counter kiosk (LCD2004, buttons, buzzer, webcam) | 4x20 LCD from `lcdLines`, OK/X, tones per step, camera with retry and fault | `.../photo`, `.../confirm`, `.../cancel`, session polling | TAMS-76 (LCD), TAMS-77 (buttons, buzzer), TAMS-78 (checkout flow, 2 s polling) |
+| Room reader | room tag tap, LED and tone from `signal` | `POST /stations/{code}/scans` | TAMS-80 (room station build) |
+| Instructor phone | approve or decline, destination room, class length | `/auth/login`, `/approvals/*`, `/hubs/live` | TAMS-35, TAMS-74, TAMS-75 (mobile approvals) |
+| Admin and loans | loan list and detail | `GET /loans`, `GET /loans/{id}` | TAMS-68, TAMS-69 (web loans) |
 | Scenarios | drive all of the above | all | acceptance checks for 50 to 53 |
 
-The ticket mapping is a best guess from the brief (TAMS-50 to 53 software flow, 76 to 79 hardware); the ticket titles were not looked up in Jira, so correct it there if it is off.
+The ticket column is the Jira ticket whose firmware or client the panel stands in for (TAMS-79, the return-flow firmware, is exercised by the Return scenario).
 
 ## Scenarios
 
@@ -75,9 +75,8 @@ item not on loan, wrong-room scan. Each logs `SCENARIO PASS/FAIL` in the event l
 
 ## Known gaps
 
-- The fingerprint matcher is a placeholder (exact template equality until TAMS-58), so keep the noise slider at 0. The slider and
-  "wrong finger" exist so the calibration can be tuned once a real matcher lands. The template bytes are made up.
-- The AS608 "scan twice" is one submit. FCM push is not wired; once TAMS-62 lands, the push will also arrive here over SignalR in dev.
+- The fingerprint matcher (TAMS-58) scores raw template bytes by Hamming distance and accepts at `Kiosk:MatchThreshold` (default 0.85). The simulator's template bytes are made up, so the noise slider and "wrong finger" only show how the threshold behaves; calibration on real AS608 captures is still to do.
+- The AS608 "scan twice" is one submit. FCM push (TAMS-62) is sent by the API when Firebase is configured; the simulator's phone still gets approval requests over SignalR (or polling).
 - Settings in `localStorage` (base URL, codes, knobs, emails). Passwords are not saved.
 - Calling another origin needs that origin in `Cors:Origins`; the default is the Vite port only.
 - Event-batch modes (coordinator cards, EVENT_RETURN) are reachable with a custom card UID but have no scenario.

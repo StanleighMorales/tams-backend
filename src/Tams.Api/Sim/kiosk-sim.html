@@ -597,9 +597,9 @@ const SCEN = [
   ["Denied: camera error", async () => checkoutFlow({ camFault: true }), r => r.failureCode === "PHOTO_FAILED"],
   ["Denied: instructor declines", async () => checkoutFlow({ decision: "decline" }), r => r.failureCode === "APPROVAL_DECLINED"],
   ["Denied: approval timeout (waits)", async () => approvalTimeout(), r => r.failureCode === "APPROVAL_TIMEOUT"],
-  ["Denied: loan limit (2nd checkout)", async () => { const a = await checkoutFlow({}); if (a.status !== "COMPLETED") return a; return checkoutFlow({ tag: "04A1B2C3D4E5F6" }); }, r => r.failureCode === "LOAN_LIMIT_REACHED"],
+  ["Denied: loan limit (2nd checkout)", async () => { const a = await checkoutFlow({}); if (a.status !== "COMPLETED") return a; const second = await checkoutFlow({ tag: "04A1B2C3D4E5F6" }); await returnFlow(); return second; }, r => r.failureCode === "LOAN_LIMIT_REACHED"],
   ["Denied: item not on loan (return)", async () => returnFlow({ tag: "04A1B2C3D4E5F6" }), r => r.failureCode === "NOT_ON_LOAN"],
-  ["Wrong-room scan (approve LAB-102)", async () => { const a = await checkoutFlow({ roomCode: "LAB-102" }); if (a.status === "COMPLETED") { const t = await roomTap(); return { status: "WRONG_ROOM check", failureCode: t.data && t.data.result }; } return a; }, r => r.failureCode === "WRONG_ROOM"],
+  ["Wrong-room scan (approve LAB-102)", async () => { const a = await checkoutFlow({ roomCode: "LAB-102" }); if (a.status === "COMPLETED") { const t = await roomTap(); await returnFlow(); return { status: "WRONG_ROOM check", failureCode: t.data && t.data.result }; } return a; }, r => r.failureCode === "WRONG_ROOM"],
 ];
 async function approvalTimeout() {
   let prior = null;
