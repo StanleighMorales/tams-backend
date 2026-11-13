@@ -69,9 +69,35 @@ The ticket column is the Jira ticket whose firmware or client the panel stands i
 
 Happy-path checkout with room check-in, RETURN, unknown card, unknown fingerprint (3 tries), unknown tag, camera error,
 instructor declines, approval timeout (sets `approval_timeout_seconds` to 30 as admin, then restores it, and waits), loan limit,
-item not on loan, wrong-room scan. Each logs `SCENARIO PASS/FAIL` in the event log. They share state (loans), so run
-"Return" between checkouts if one is left open. `/sim#run=<index>` runs one scenario on load and writes the result to
-`body[data-result]`, for headless smoke tests.
+item not on loan, wrong-room scan, plus three added for the firmware work:
+
+- **Enrollment on the kiosk:** staff starts an enrollment for 2024-0004 finger 8, the kiosk polls it up, one scan and OK, then the
+  scenario checks the finger is stored and removes it again.
+- **Event batch checkout + bulk return:** admin creates an event running now for the demo coordinator (Ina), her card opens
+  `EVENT_BATCH`, two tags are borrowed, OK; then `EVENT_RETURN` returns both. The event is closed afterwards.
+- **Wi-Fi drop** (waits about a minute): sends a heartbeat, turns Wi-Fi off, waits for `GET /stations/health` to say Offline, turns
+  Wi-Fi back on, and expects Online after the next heartbeat.
+
+Each logs `SCENARIO PASS/FAIL` in the event log. Checkouts leave a loan open until it is returned, so run "Return" between
+checkouts you start by hand (the loan-limit and wrong-room scenarios return their own). `/sim#run=<index>` runs one scenario on load
+and writes the result to `body[data-result]`, for headless smoke tests.
+
+## One page per device
+
+`/sim?device=kiosk`, `?device=room`, `?device=phone` and `?device=admin` show a single device each, so each can sit in its own
+browser tab or window like the real thing. They share the API, not state: the room tab posts scans and heartbeats as
+`ROOM-101`, the kiosk tab polls and heartbeats as `KIOSK-1`, the phone tab logs in as the instructor. Phone and admin tabs never
+heartbeat or poll as a station. Settings are stored per device. `/sim` with no parameter is the full dashboard and the only page
+with the scenarios.
+
+## Making it behave like the hardware
+
+- **Latency, packet loss and HTTP timeout** (Network panel) apply to hardware calls only (kiosk, room reader, heartbeats). A dropped or
+  timed-out request is logged and the LCD shows "Server timeout" or "No Wi-Fi", so the firmware's retry logic can be designed against it.
+- **AS608 template** is 512 bytes, the size of the sensor's character file (the API accepts 1 to 4096). The noise slider flips random
+  bytes: 0 to about 160 flipped still match at the default `Kiosk:MatchThreshold` of 0.85, 256 does not.
+- **Download full log (.json)** saves every non-poll call with its station header, request body and response, to hand to whoever writes
+  the firmware as the traffic the API expects. Passwords and templates are redacted.
 
 ## Known gaps
 
@@ -79,4 +105,3 @@ item not on loan, wrong-room scan. Each logs `SCENARIO PASS/FAIL` in the event l
 - The AS608 "scan twice" is one submit. FCM push (TAMS-62) is sent by the API when Firebase is configured; the simulator's phone still gets approval requests over SignalR (or polling).
 - Settings in `localStorage` (base URL, codes, knobs, emails). Passwords are not saved.
 - Calling another origin needs that origin in `Cors:Origins`; the default is the Vite port only.
-- Event-batch modes (coordinator cards, EVENT_RETURN) are reachable with a custom card UID but have no scenario.

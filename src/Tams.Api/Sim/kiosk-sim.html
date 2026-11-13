@@ -48,11 +48,13 @@ body:not(.showpolls) #log .poll{display:none}
 video,canvas.cam{width:100%;max-width:240px;background:#000;border-radius:6px;display:block}
 .card{border:1px solid var(--line);border-radius:6px;padding:6px 8px;margin:6px 0}
 .scen{display:flex;flex-wrap:wrap;gap:6px}
+nav a{color:var(--accent)}nav a.on{font-weight:700;text-decoration:none;color:var(--ink)}
 </style>
 </head>
 <body>
 <header>
-  <h1>TAMS Kiosk Simulator</h1>
+  <h1 id="title">TAMS Kiosk Simulator</h1>
+  <nav aria-label="Device pages" class="row" style="margin:0"><a href="?">All</a> <a href="?device=kiosk">Kiosk</a> <a href="?device=room">Room reader</a> <a href="?device=phone">Phone</a> <a href="?device=admin">Admin</a></nav>
   <label>API base URL<input id="base" size="22" autocomplete="off"></label>
   <label>Counter kiosk <small>station_code</small><input id="station" size="10" autocomplete="off"></label>
   <label>Room reader <small>station_code</small><input id="roomStation" size="10" autocomplete="off"></label>
@@ -63,7 +65,7 @@ video,canvas.cam{width:100%;max-width:240px;background:#000;border-radius:6px;di
 </header>
 <main>
 
-<section aria-labelledby="h-net">
+<section aria-labelledby="h-net" data-dev="kiosk room">
   <h2 id="h-net">Network and heartbeat <small>ESP32 Wi-Fi, FR-8.1</small></h2>
   <div class="row">
     <label>Interval (s)<input id="hbInterval" type="number" min="1" max="600" value="30" style="width:80px"></label>
@@ -72,12 +74,18 @@ video,canvas.cam{width:100%;max-width:240px;background:#000;border-radius:6px;di
     <label class="inline"><input type="checkbox" id="hbRoom" checked> room reader</label>
     <button id="hbNow">Send now</button>
   </div>
+  <div class="row">
+    <label>Latency (ms)<input id="latency" type="number" min="0" max="10000" value="0" style="width:80px"></label>
+    <label>Packet loss (%)<input id="loss" type="number" min="0" max="100" value="0" style="width:80px"></label>
+    <label>HTTP timeout (s)<input id="timeout" type="number" min="1" max="60" value="5" style="width:80px"></label>
+  </div>
+  <div class="hint">Hardware calls only. Use these to test the firmware's retry and timeout handling: a dropped or timed-out request shows in the log and on the LCD, as a lost ESP32 request would.</div>
   <div class="hint" id="hbStatus">Heartbeats start with the page.</div>
   <div class="hint">Wi-Fi off stops polling and heartbeats. The station goes Warning then Offline within a few windows (US-15). Station health (needs a staff login below):</div>
   <div id="health" class="hint">-</div>
 </section>
 
-<section aria-labelledby="h-pn">
+<section aria-labelledby="h-pn" data-dev="kiosk">
   <h2 id="h-pn">PN532 reader <small>cards and item tags</small></h2>
   <div class="row">
     <label>Auth card<select id="cardSel">
@@ -100,12 +108,27 @@ video,canvas.cam{width:100%;max-width:240px;background:#000;border-radius:6px;di
   </div>
   <div class="row">
     <button id="tapTag" class="primary">Tap tag on kiosk (ASSET)</button>
-    <button id="tapRoom">Tap tag at room door</button>
-    <span>Room LED <span class="led" id="roomLed" role="img" aria-label="room LED"></span> <span id="roomRes" class="hint"></span></span>
   </div>
 </section>
 
-<section aria-labelledby="h-fp">
+<section aria-labelledby="h-room" data-dev="room">
+  <h2 id="h-room">Room reader <small>room station: PN532, LED, buzzer (F3)</small></h2>
+  <div class="row">
+    <label>Item tag<select id="roomTagSel">
+      <option value="E2000017221101441890">LT-001 Dell Latitude</option>
+      <option value="04A1B2C3D4E5F6">LT-002 ThinkPad</option>
+      <option value="0000DEAD0000">Unknown tag</option>
+      <option value="">Custom UID...</option></select></label>
+    <label>Tag UID<input id="roomTagUid" size="22" value="E2000017221101441890" autocomplete="off"></label>
+  </div>
+  <div class="row">
+    <button id="tapRoom" class="primary">Tap tag at room door</button>
+    <span>LED <span class="led" id="roomLed" role="img" aria-label="room LED"></span> <span id="roomRes" class="hint"></span></span>
+  </div>
+  <div class="hint">Posts <code>POST /stations/{code}/scans</code> for the room reader's station code in the header. Green LED and chime for SUCCESS, red and a low tone for ERROR (FR-3.2).</div>
+</section>
+
+<section aria-labelledby="h-fp" data-dev="kiosk">
   <h2 id="h-fp">AS608 fingerprint <small>FR-1.3</small></h2>
   <div class="row">
     <label>Student no.<input id="studentNo" list="studentList" size="12" value="2024-0001" autocomplete="off"></label>
@@ -113,20 +136,20 @@ video,canvas.cam{width:100%;max-width:240px;background:#000;border-radius:6px;di
     <label>Finger index (0-9)<input id="fingerIdx" type="number" min="0" max="9" value="1" style="width:70px"></label>
   </div>
   <div class="row">
-    <label>Noise (bytes flipped): <output id="noiseOut">0</output><input id="noise" type="range" min="0" max="16" value="0"></label>
+    <label>Noise (bytes flipped): <output id="noiseOut">0</output><input id="noise" type="range" min="0" max="256" value="0"></label>
     <label class="inline"><input type="checkbox" id="wrongFinger"> Wrong finger (random template)</label>
   </div>
   <div class="row">
     <button id="finger" class="primary">Place finger</button>
   </div>
-  <div class="hint">ponytail: the API matcher is a placeholder (exact template equality until TAMS-58), so keep noise at 0. Raise it to see recognition fail; it becomes a calibration knob once a real matcher lands. Template = bytes derived from student no. + finger index. The student must be enrolled first (Enrollment below, or a scenario does it).</div>
+  <div class="hint">Template = 512 bytes (the AS608 character file size) derived from student no. + finger index. The API accepts a scan when its similarity to a stored template is at least <code>Kiosk:MatchThreshold</code> (default 0.85), so a few flipped bytes still match and a lot do not. The bytes are made up, so this shows the threshold behaviour, not real sensor noise. The student must be enrolled first (Enrollment below, or a scenario does it).</div>
   <div class="row">
     <button id="enroll">Enrollment mode: start on kiosk (needs staff login)</button>
   </div>
   <div class="hint">Staff starts a session, the kiosk idle poll picks it up, then Place finger and OK (confirm).</div>
 </section>
 
-<section class="wide" aria-labelledby="h-kiosk">
+<section class="wide" aria-labelledby="h-kiosk" data-dev="kiosk">
   <h2 id="h-kiosk">Counter kiosk <small>LCD2004, buttons, buzzer, webcam</small></h2>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:14px">
     <div>
@@ -157,7 +180,7 @@ video,canvas.cam{width:100%;max-width:240px;background:#000;border-radius:6px;di
   </div>
 </section>
 
-<section aria-labelledby="h-phone">
+<section aria-labelledby="h-phone" data-dev="phone">
   <h2 id="h-phone">Instructor phone <small>F2 approval</small></h2>
   <div class="row">
     <label>Email<input id="phEmail" size="20" autocomplete="off"></label>
@@ -171,7 +194,7 @@ video,canvas.cam{width:100%;max-width:240px;background:#000;border-radius:6px;di
   <div id="events" class="scroll hint"></div>
 </section>
 
-<section aria-labelledby="h-staff">
+<section aria-labelledby="h-staff" data-dev="admin">
   <h2 id="h-staff">Admin and loans <small>GET /loans</small></h2>
   <div class="row">
     <label>Email<input id="stEmail" size="20" autocomplete="off"></label>
@@ -195,9 +218,10 @@ video,canvas.cam{width:100%;max-width:240px;background:#000;border-radius:6px;di
   <div class="hint">Scenarios use the card, tag, student and student-enrolment fields above and the two logins (staff login also auto-enrolls the student if needed). <span id="scStatus"></span></div>
 </section>
 
-<section class="wide" aria-labelledby="h-log">
+<section class="wide" aria-labelledby="h-log" data-dev="kiosk room phone admin">
   <h2 id="h-log">Event log <small>every request and response: method, URL, status, ms</small></h2>
-  <div class="row"><button id="logClear">Clear</button><button id="logCopy">Copy as text</button></div>
+  <div class="hint">The download has the station header, request and response bodies of every call. Hand it to whoever writes the firmware as the exact traffic the API expects.</div>
+  <div class="row"><button id="logClear">Clear</button><button id="logCopy">Copy as text</button><button id="logDownload">Download full log (.json)</button></div>
   <div id="log" aria-live="off"></div>
 </section>
 </main>
@@ -207,27 +231,41 @@ video,canvas.cam{width:100%;max-width:240px;background:#000;border-radius:6px;di
 // ponytail: one file, no framework, no build. Hardware is simulated; the backend is the real API.
 const $ = id => document.getElementById(id);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+// ?device=kiosk|room|phone|admin shows one device on its own page (open each in its own tab; they share the real API, not state)
+const DEVICES = ["kiosk", "room", "phone", "admin"];
+const device = DEVICES.find(d => d === (new URLSearchParams(location.search).get("device") || "").toLowerCase()) || "";
+if (device) {
+  for (const sec of document.querySelectorAll("section")) sec.hidden = !(sec.dataset.dev || "").split(" ").includes(device);
+  const names = { kiosk: "Counter kiosk", room: "Room reader", phone: "Instructor phone", admin: "Admin" };
+  $("title").textContent = "TAMS " + names[device] + " (simulated)"; document.title = $("title").textContent;
+}
+for (const a of document.querySelectorAll("nav a")) if (a.getAttribute("href") === (device ? "?device=" + device : "?")) a.classList.add("on");
+const STORE_KEY = "tams-sim" + (device ? "-" + device : "");
 const DEFAULTS = {
+  latency: 0, loss: 0, timeout: 5, roomTagUid: "E2000017221101441890",
   base: "/api", station: "KIOSK-1", roomStation: "ROOM-101", hbInterval: 30, hbJitter: 2, hbKiosk: true, hbRoom: true,
   cardUid: "04A1B2C3", tagUid: "E2000017221101441890", studentNo: "2024-0001", fingerIdx: 1, noise: 0,
   autoPhoto: true, mute: false, showPolls: false, scLen: "90",
   phEmail: "instructor@tams.test", phPw: "Demo#Pass123", stEmail: "admin@tams.test", stPw: "Admin#Pass123", loansAuto: true,
 };
-const SAVED = ["base","station","roomStation","hbInterval","hbJitter","hbKiosk","hbRoom","cardUid","tagUid","studentNo","fingerIdx","noise","autoPhoto","mute","showPolls","scLen","phEmail","stEmail","loansAuto"];
+const SAVED = ["base","station","roomStation","hbInterval","hbJitter","hbKiosk","hbRoom","latency","loss","timeout","roomTagUid","cardUid","tagUid","studentNo","fingerIdx","noise","autoPhoto","mute","showPolls","scLen","phEmail","stEmail","loansAuto"];
 let cfg = { ...DEFAULTS };
-try { Object.assign(cfg, JSON.parse(localStorage.getItem("tams-sim") || "{}")); } catch { /* private window: run on defaults */ }
-function saveCfg() { try { localStorage.setItem("tams-sim", JSON.stringify(Object.fromEntries(SAVED.map(k => [k, cfg[k]])))); } catch { /* ignore */ } }
+try { Object.assign(cfg, JSON.parse(localStorage.getItem(STORE_KEY) || "{}")); } catch { /* private window: run on defaults */ }
+function saveCfg() { try { localStorage.setItem(STORE_KEY, JSON.stringify(Object.fromEntries(SAVED.map(k => [k, cfg[k]])))); } catch { /* ignore */ } }
 for (const k of Object.keys(DEFAULTS)) {
   const el = $(k); if (!el) continue;
   if (el.type === "checkbox") el.checked = !!cfg[k]; else el.value = cfg[k];
   el.addEventListener("input", () => { cfg[k] = el.type === "checkbox" ? el.checked : el.value; saveCfg(); if (k === "showPolls") document.body.classList.toggle("showpolls", el.checked); if (k === "noise") $("noiseOut").textContent = el.value; });
 }
 $("noiseOut").textContent = cfg.noise;
+if (device) { // each device heartbeats only as itself; phone and admin are not stations
+  cfg.hbKiosk = $("hbKiosk").checked = device === "kiosk"; cfg.hbRoom = $("hbRoom").checked = device === "room";
+}
 document.body.classList.toggle("showpolls", !!cfg.showPolls);
 const wifiOn = () => $("wifi").checked;
 
 // ---------------------------------------------------------------- log + api
-const logEl = $("log");
+const logEl = $("log"), LOGS = [];
 function logNote(text) { const d = document.createElement("div"); d.className = "note"; d.textContent = new Date().toLocaleTimeString() + "  # " + text; logEl.prepend(d); }
 function logLine(cls, text, detail, poll) {
   const d = document.createElement("div"); d.className = cls + (poll ? " poll" : "");
@@ -235,7 +273,11 @@ function logLine(cls, text, detail, poll) {
   const pre = document.createElement("pre"); pre.textContent = detail; det.append(sum, pre); d.append(det); logEl.prepend(d);
   while (logEl.childElementCount > 400) logEl.lastChild.remove();
 }
-$("logClear").onclick = () => { logEl.textContent = ""; };
+$("logClear").onclick = () => { logEl.textContent = ""; LOGS.length = 0; };
+$("logDownload").onclick = () => {
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify({ baseUrl: cfg.base, calls: LOGS }, null, 2)], { type: "application/json" }));
+  a.download = "tams-sim-log-" + new Date().toISOString().replace(/[:.]/g, "-") + ".json"; a.click(); URL.revokeObjectURL(a.href);
+};
 $("logCopy").onclick = async () => { try { await navigator.clipboard.writeText([...logEl.querySelectorAll("summary,.note")].map(e => e.textContent).reverse().join("\n")); } catch { /* clipboard blocked */ } };
 
 const actors = { phone: { tag: "PHONE" }, staff: { tag: "STAFF" } };
@@ -244,16 +286,25 @@ function url(path) { return cfg.base.replace(/\/$/, "") + path; }
 async function api(method, path, o = {}) {
   const tag = o.tag || (o.actor ? actors[o.actor].tag : "HW");
   if (o.hw && !wifiOn()) { logLine("s0", `${tag} ${method} ${path} -> BLOCKED (Wi-Fi off)`, "", o.poll); return { status: 0, ok: false, data: null, offline: true }; }
+  if (o.hw) { // simulate the ESP32's link: latency, then maybe a lost request
+    if (+cfg.latency > 0) await sleep(+cfg.latency);
+    if (Math.random() * 100 < +cfg.loss) { logLine("s0", `${tag} ${method} ${path} -> DROPPED (packet loss)`, "", o.poll); return { status: 0, ok: false, data: null, offline: true }; }
+  }
   const headers = {};
   if (o.station) headers["X-Station-Code"] = cfg.station;
   if (o.actor && actors[o.actor].token) headers.Authorization = "Bearer " + actors[o.actor].token;
   let body;
   if (o.form) body = o.form; else if (o.body !== undefined) { headers["Content-Type"] = "application/json"; body = JSON.stringify(o.body); }
   const t0 = performance.now(); let res, data = null, text = "";
-  try { res = await fetch(url(path), { method, headers, body }); text = await res.text(); try { data = text ? JSON.parse(text) : null; } catch { data = null; } }
-  catch (e) { logLine("s0", `${tag} ${method} ${path} -> network error ${e.message}`, "", o.poll); return { status: 0, ok: false, data: null, offline: true }; }
+  const ctl = new AbortController(), killer = o.hw ? setTimeout(() => ctl.abort(), Math.max(1, +cfg.timeout || 5) * 1000) : 0;
+  try { res = await fetch(url(path), { method, headers, body, signal: ctl.signal }); text = await res.text(); try { data = text ? JSON.parse(text) : null; } catch { data = null; } }
+  catch (e) { logLine("s0", `${tag} ${method} ${path} -> ${e.name === "AbortError" ? "TIMEOUT after " + cfg.timeout + " s" : "network error " + e.message}`, "", o.poll); return { status: 0, ok: false, data: null, offline: true, timedOut: e.name === "AbortError" }; }
+  finally { clearTimeout(killer); }
   const ms = Math.round(performance.now() - t0);
   const code = data && data.code ? " " + data.code : "";
+  if (!o.poll) LOGS.push({ at: new Date().toISOString(), actor: tag, method, path, stationCode: o.station ? cfg.station : undefined, ms, status: res.status,
+    request: o.form ? "[multipart]" : o.body !== undefined ? redact(o.body) : null, response: data ?? text.slice(0, 500) });
+  if (LOGS.length > 2000) LOGS.shift();
   logLine("s" + Math.floor(res.status / 100), `${tag} ${method} ${path} -> ${res.status}${code} ${ms}ms`,
     `request: ${o.form ? "[multipart " + (o.form.get("file") ? o.form.get("file").size + " bytes JPEG" : "no file") + "]" : o.body !== undefined ? JSON.stringify(redact(o.body)) : "(none)"}\nresponse: ${text.slice(0, 2000)}`, o.poll);
   if (res.status === 401 && o.actor && !o.retried && await relogin(o.actor)) return api(method, path, { ...o, retried: true });
@@ -313,10 +364,10 @@ function render(v) {
   }
   return v;
 }
-function offlineLcd() { lcdSet(["No Wi-Fi", "Reconnecting...", "", ""], true); }
+function offlineLcd(timedOut) { lcdSet([timedOut ? "Server timeout" : "No Wi-Fi", "Reconnecting...", "", ""], true); }
 async function kiosk(method, path, o = {}) {
   const r = await api(method, path, { station: true, hw: true, tag: "KIOSK", ...o });
-  if (r.offline && !r.status) offlineLcd();
+  if (r.offline && !r.status) offlineLcd(r.timedOut);
   return r;
 }
 const stationCode = () => encodeURIComponent(cfg.station);
@@ -375,6 +426,7 @@ $("finger").onclick = () => kFinger();
 $("ok").onclick = () => kConfirm();
 $("cancel").onclick = () => kCancel();
 $("cardSel").onchange = e => { if (e.target.value) { $("cardUid").value = e.target.value; cfg.cardUid = e.target.value; saveCfg(); } };
+$("roomTagSel").onchange = e => { if (e.target.value) { $("roomTagUid").value = e.target.value; cfg.roomTagUid = e.target.value; saveCfg(); } };
 $("tagSel").onchange = e => { if (e.target.value) { $("tagUid").value = e.target.value; cfg.tagUid = e.target.value; saveCfg(); } };
 $("wifi").onchange = () => logNote("Wi-Fi " + (wifiOn() ? "ON" : "OFF"));
 
@@ -383,9 +435,9 @@ function fpTemplate(studentNo, finger, wrong, noise) {
   const seedStr = wrong ? "wrong-" + Math.random() : `TAMS-SIM|${studentNo}|${finger}`;
   let h = 2166136261; for (const c of seedStr) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); }
   const rnd = () => { h |= 0; h = h + 0x6D2B79F5 | 0; let t = Math.imul(h ^ h >>> 15, 1 | h); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
-  const bytes = new Uint8Array(96); for (let i = 0; i < bytes.length; i++) bytes[i] = rnd() * 256;
+  const bytes = new Uint8Array(512); /* AS608 character file size */ for (let i = 0; i < bytes.length; i++) bytes[i] = rnd() * 256;
   for (let i = 0; i < noise; i++) bytes[Math.floor(Math.random() * bytes.length)] ^= 1 + Math.floor(Math.random() * 255);
-  return btoa(String.fromCharCode(...bytes));
+  return btoa(Array.from(bytes, b => String.fromCharCode(b)).join(""));
 }
 
 // ---------------------------------------------------------------- camera
@@ -517,7 +569,7 @@ async function loadStudents() {
 
 // ---------------------------------------------------------------- room reader + enrollment
 async function roomTap(tag) {
-  const r = await api("POST", `/stations/${encodeURIComponent(cfg.roomStation)}/scans`, { hw: true, tag: "ROOM", body: { tagUid: tag || cfg.tagUid } });
+  const r = await api("POST", `/stations/${encodeURIComponent(cfg.roomStation)}/scans`, { hw: true, tag: "ROOM", body: { tagUid: tag || cfg.roomTagUid } });
   if (r.ok) {
     const good = r.data.signal === "SUCCESS"; $("roomLed").className = "led " + (good ? "green" : "red"); $("roomRes").textContent = `${r.data.result} ${r.data.assetCode || ""}`;
     (good ? SOUNDS.OK : SOUNDS.DENY)(); setTimeout(() => { $("roomLed").className = "led"; }, 2500); refreshLoansSoon();
@@ -599,7 +651,52 @@ const SCEN = [
   ["Denied: approval timeout (waits)", async () => approvalTimeout(), r => r.failureCode === "APPROVAL_TIMEOUT"],
   ["Denied: loan limit (2nd checkout)", async () => { const a = await checkoutFlow({}); if (a.status !== "COMPLETED") return a; const second = await checkoutFlow({ tag: "04A1B2C3D4E5F6" }); await returnFlow(); return second; }, r => r.failureCode === "LOAN_LIMIT_REACHED"],
   ["Denied: item not on loan (return)", async () => returnFlow({ tag: "04A1B2C3D4E5F6" }), r => r.failureCode === "NOT_ON_LOAN"],
-  ["Wrong-room scan (approve LAB-102)", async () => { const a = await checkoutFlow({ roomCode: "LAB-102" }); if (a.status === "COMPLETED") { const t = await roomTap(); await returnFlow(); return { status: "WRONG_ROOM check", failureCode: t.data && t.data.result }; } return a; }, r => r.failureCode === "WRONG_ROOM"],
+  ["Wrong-room scan (approve LAB-102)", async () => { const a = await checkoutFlow({ roomCode: "LAB-102" }); if (a.status === "COMPLETED") { const t = await roomTap(cfg.tagUid); await returnFlow(); return { status: "WRONG_ROOM check", failureCode: t.data && t.data.result }; } return a; }, r => r.failureCode === "WRONG_ROOM"],
+  ["Enrollment on the kiosk (2024-0004, finger 8)", async () => {
+    if (!actors.staff.token && !await staffLogin()) return { status: "NO_STAFF_LOGIN" };
+    const st = await studentByNo("2024-0004"); if (!st) return { status: "NO_STUDENT" };
+    const drop = () => api("DELETE", `/students/${st.id}/fingerprints/8`, { actor: "staff" });
+    await drop();   // 404 when there is none; the scenario starts from a clean finger
+    if (K.session) await kCancel();
+    const prev = [cfg.studentNo, cfg.fingerIdx]; cfg.studentNo = "2024-0004"; cfg.fingerIdx = 8;
+    try {
+      if (!await startEnrollment("2024-0004", 8)) return { status: "NO_SESSION" };
+      await kFinger(); if (cur().nextStep === "CONFIRM") await kConfirm();
+      const f = await api("GET", `/students/${st.id}/fingerprints`, { actor: "staff" });
+      const stored = f.ok && f.data.items.some(x => x.fingerIndex === 8);
+      await drop();
+      return { ...cur(), stored };
+    } finally { [cfg.studentNo, cfg.fingerIdx] = prev; }
+  }, r => r.status === "COMPLETED" && r.stored],
+  ["Event batch checkout + bulk return (coordinator)", async () => {
+    if (!actors.staff.token && !await staffLogin()) return { status: "NO_STAFF_LOGIN" };
+    if (!actors.phone.token) await phoneLogin();
+    const now = Date.now();   // the seeded instructor is an event coordinator; the event runs now
+    const ev = await api("POST", "/events", { actor: "staff", body: { title: "Sim event " + new Date().toLocaleTimeString(), venueText: "Sim hall",
+      startsAt: new Date(now - 60000).toISOString(), endsAt: new Date(now + 3 * 3600000).toISOString(), coordinatorUserId: actors.phone.user.id } });
+    if (!ev.ok) return { status: "EVENT_CREATE_FAILED", failureCode: ev.data && ev.data.code };
+    try {
+      if (K.session) await kCancel();
+      K.idleShown = false; await kStart(null, "04A1B2C3"); if (finished()) return cur();
+      if (cur().type !== "EVENT_BATCH") return { status: "WRONG_TYPE", failureCode: cur().type };
+      await kTag("E2000017221101441890"); await kTag("04A1B2C3D4E5F6"); await kConfirm();
+      if (cur().status !== "COMPLETED") return cur();
+      K.idleShown = false; await kStart("EVENT_RETURN", "04A1B2C3"); if (finished()) return cur();
+      await kTag("E2000017221101441890"); await kTag("04A1B2C3D4E5F6"); await kConfirm();
+      return cur();
+    } finally { await api("POST", `/events/${ev.data.id}/close`, { actor: "staff" }); }
+  }, r => r.status === "COMPLETED"],
+  ["Wi-Fi drop: kiosk goes Offline, then recovers (waits)", async () => {
+    if (!actors.staff.token && !await staffLogin()) return { status: "NO_STAFF_LOGIN" };
+    const health = async () => { const h = await api("GET", "/stations/health", { actor: "staff", poll: true }); const s = h.ok && h.data.stations.find(x => x.stationCode === cfg.station.toUpperCase()); return s ? String(s.health).toUpperCase() : "?"; };
+    await heartbeat(); await sleep(500); const was = await health();
+    let off = false;
+    $("wifi").checked = false; logNote("Wi-Fi OFF");
+    try { off = !!await until(async () => (await health()) === "OFFLINE", 150000, 3000); }
+    finally { $("wifi").checked = true; logNote("Wi-Fi ON"); }
+    await heartbeat(); await sleep(500); const back = await health();
+    return { status: `${was} > ${off ? "OFFLINE" : "never offline"} > ${back}`, failureCode: null };
+  }, r => /^ONLINE > OFFLINE > ONLINE$/.test(r.status)],
 ];
 async function approvalTimeout() {
   let prior = null;
@@ -631,7 +728,8 @@ window.SIM = { runScenario, SCEN, api, actors, K, checkoutFlow, returnFlow, cfg,
 
 // ---------------------------------------------------------------- boot
 lcdSet(["TAMS Counter", "Tap auth card", "", ""]);
-pollLoop(); heartbeat().then(hbSchedule);
+if (!device || device === "kiosk") pollLoop();   // only the kiosk polls its session
+if (!device || device === "kiosk" || device === "room") heartbeat().then(hbSchedule);
 // #run=<scenario index> auto-runs one scenario (headless smoke test): sets body[data-result] when done.
 const m = /run=(\d+)/.exec(location.hash); if (m && SCEN[+m[1]]) setTimeout(() => runScenario(SCEN[+m[1]][0]), 1500);
 </script>
