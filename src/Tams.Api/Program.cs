@@ -12,6 +12,13 @@ using Tams.Api.Users;
 using Tams.Api.Students;
 using Tams.Api.Settings;
 using Tams.Api.Qr;
+using Tams.Api.Events;
+using Tams.Api.Inventory;
+using Tams.Api.Kiosk;
+using Tams.Api.Live;
+using Tams.Api.Loans;
+using Tams.Api.Push;
+using Tams.Api.Violations;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -38,6 +45,9 @@ var connectionString = builder.Configuration.GetConnectionString("Default")
 builder.Services.AddDbContext<TamsDbContext>(o => o.UseNpgsql(connectionString, PgEnums.MapAll));
 builder.Services.AddTamsSettings();
 builder.Services.AddHostedService<EnrollmentSweeper>();
+builder.Services.AddHostedService<LoanSweeper>();
+builder.Services.AddSignalR();
+builder.Services.AddTamsPush(builder.Configuration, builder.Environment);
 
 // Fingerprint templates are encrypted with Data Protection; the key ring must survive container
 // rebuilds (Compose mounts the dp-keys volume at /app/keys) or stored templates become unreadable.
@@ -87,6 +97,16 @@ app.MapQrEndpoints();
 app.MapFacilityEndpoints();
 app.MapSettingsEndpoints();
 app.MapAuditLogEndpoints();
+app.MapKioskEndpoints();
+app.MapApprovalEndpoints();
+app.MapDeviceEndpoints();
+app.MapLoanEndpoints();
+app.MapViolationEndpoints();
+app.MapEventEndpoints();
+app.MapInventoryAuditEndpoints();
+app.MapNotificationEndpoints();
+app.MapDeviceTokenEndpoints();
+app.MapHub<LiveHub>("/hubs/live").RequireAuthorization(Policies.AnyUser); // PRD 6.4
 
 // Compose healthcheck polls this, and it is the first thing to check after a deploy.
 app.MapGet("/health", async (TamsDbContext db, ILogger<Program> logger, CancellationToken ct) =>
@@ -106,6 +126,14 @@ app.MapGet("/health", async (TamsDbContext db, ILogger<Program> logger, Cancella
         new { status = "degraded", database = "down" },
         statusCode: StatusCodes.Status503ServiceUnavailable);
 }).AllowAnonymous();
+
+// Development only: the interactive kiosk simulator (docs/SIMULATOR.md). Same origin as the API, so no CORS.
+if (app.Environment.IsDevelopment())
+{
+    var simPage = Path.Combine(AppContext.BaseDirectory, "Sim", "kiosk-sim.html");
+    app.MapGet("/sim", () => File.Exists(simPage) ? Results.File(simPage, "text/html; charset=utf-8") : Results.NotFound())
+        .AllowAnonymous().ExcludeFromDescription();
+}
 
 if (app.Environment.IsDevelopment()) AuthorizationCoverage.LogViolations(app); // keep after the last Map* call
 

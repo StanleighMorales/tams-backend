@@ -195,7 +195,7 @@ public class EnrollmentTests(ApiFixture api)
 
         await s.Staff.PostEmptyAsync($"/api/enrollment/sessions/{id}/cancel").Expect(200);
         var view = await s.Staff.GetAsync($"/api/enrollment/sessions/{id}").Ok();
-        Assert.Equal("Cancelled", view.GetProperty("status").GetString());
+        Assert.Equal("CANCELLED", view.GetProperty("status").GetString());
 
         await s.Staff.PostEmptyAsync($"/api/enrollment/sessions/{id}/cancel").Expect(409, "INVALID_SESSION_STATE");
         await StartSession(s);

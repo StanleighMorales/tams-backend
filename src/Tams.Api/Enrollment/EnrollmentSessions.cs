@@ -93,8 +93,12 @@ public static class EnrollmentSessions
         db.ChangeTracker.Clear();
     }
 
-    public static Task<int> RemoveStoredTemplateAsync(TamsDbContext db, Guid studentId, short fingerIndex, CancellationToken ct) =>
-        db.FingerprintTemplates.Where(t => t.StudentId == studentId && t.FingerIndex == fingerIndex).ExecuteDeleteAsync(ct);
+    public static async Task<int> RemoveStoredTemplateAsync(TamsDbContext db, Guid studentId, short fingerIndex, CancellationToken ct)
+    {
+        var n = await db.FingerprintTemplates.Where(t => t.StudentId == studentId && t.FingerIndex == fingerIndex).ExecuteDeleteAsync(ct);
+        Kiosk.TemplateCache.Invalidate();
+        return n;
+    }
 
     public static async Task WriteAuditAsync(TamsDbContext db, HttpContext http, Guid? actorUserId, Guid? actorStationId,
         string action, Guid studentId, string? beforeJson, string? afterJson, CancellationToken ct)
