@@ -81,6 +81,33 @@ public class ApprovalPushTests
         Assert.Equal(Session, json.GetProperty("sessionId").GetGuid());
     }
 
+    static NoticePush Notice() => new(User, Guid.NewGuid(), "LOAN_OVERDUE", "Loan overdue", "LAP-001 is overdue",
+        JsonDocument.Parse("""{"loanNo":"L-1"}""").RootElement.Clone(), Guid.NewGuid(), DateTimeOffset.UtcNow);
+
+    [Fact]
+    public void Fcm_notice_request_carries_the_type_and_the_full_message()
+    {
+        var n = Notice();
+        var m = FcmApprovalPushSender.BuildNoticeRequest(n, "tok")["message"]!;
+        Assert.Equal("tok", m["token"]!.GetValue<string>());
+        Assert.Equal("Loan overdue", m["notification"]!["title"]!.GetValue<string>());
+        Assert.Equal("notice", m["data"]!["type"]!.GetValue<string>());
+        Assert.Equal("LOAN_OVERDUE", m["data"]!["noticeType"]!.GetValue<string>());
+        var payload = JsonDocument.Parse(m["data"]!["payload"]!.GetValue<string>()).RootElement;
+        Assert.Equal(n.NotificationId, payload.GetProperty("notificationId").GetGuid());
+        Assert.Equal("L-1", payload.GetProperty("payload").GetProperty("loanNo").GetString());
+    }
+
+    [Fact]
+    public async Task Fake_sender_emits_a_notice_to_the_recipients_user_group()
+    {
+        var hub = new RecordingHub();
+        var sender = new FakeApprovalPushSender(hub, NullLogger<FakeApprovalPushSender>.Instance);
+        Assert.Empty(await sender.SendNoticeAsync(Notice(), [], default));
+        Assert.Equal(LiveHub.UserGroup(User), hub.Group);
+        Assert.Equal("notice.push", hub.Method);
+    }
+
     sealed class RecordingHub : IHubContext<LiveHub>
     {
         public string? Group, Method;

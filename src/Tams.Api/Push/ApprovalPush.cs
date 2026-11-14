@@ -40,8 +40,24 @@ public sealed record ApprovalPush(
     };
 }
 
-/// <summary>Delivers an approval push. Returns the tokens the provider rejected as invalid so the caller can delete them.</summary>
+/// <summary>A stored notification (warning, overdue, missing, freeze, anomaly) pushed to its recipient's phones (TAMS-97).</summary>
+public sealed record NoticePush(Guid UserId, Guid NotificationId, string NoticeType, string Title, string Body,
+    JsonElement? Payload, Guid? LoanId, DateTimeOffset CreatedAt)
+{
+    public const string Type = "notice";
+
+    public object ToMessage() => new
+    {
+        type = Type, notificationId = NotificationId, noticeType = NoticeType, title = Title, body = Body,
+        loanId = LoanId, payload = Payload, createdAt = CreatedAt,
+    };
+}
+
+/// <summary>Delivers a push. Returns the tokens the provider rejected as invalid so the caller can delete them.</summary>
 public interface IApprovalPushSender
 {
+    /// <summary>False for senders that do not go through device tokens (the Development fake), so a notice is still delivered to a user without one.</summary>
+    bool NeedsTokens { get; }
     Task<IReadOnlyList<string>> SendAsync(ApprovalPush push, IReadOnlyList<string> tokens, CancellationToken ct);
+    Task<IReadOnlyList<string>> SendNoticeAsync(NoticePush push, IReadOnlyList<string> tokens, CancellationToken ct);
 }

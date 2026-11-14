@@ -10,8 +10,8 @@ namespace Tams.Api.Live;
 
 /// <summary>
 /// My notifications (PRD 6.3): the instructor's Alerts screen (FR-2.6) and staff notices such as
-/// STATION_OFFLINE. Rows are written by the loan rules and the sweeper; push delivery is not wired yet,
-/// so delivered_at stays null and clients read them here or get the live event over SignalR.
+/// STATION_OFFLINE. Rows are written by the loan rules and the sweeper; the sweeper then pushes them to the
+/// recipient's devices (NoticeDelivery) and stamps delivered_at. Clients can also read them here.
 /// </summary>
 public static class NotificationEndpoints
 {

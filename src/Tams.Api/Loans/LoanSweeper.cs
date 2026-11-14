@@ -5,6 +5,7 @@ using Tams.Api.Data.Entities;
 using Tams.Api.Facilities;
 using Tams.Api.Kiosk;
 using Tams.Api.Live;
+using Tams.Api.Push;
 using Tams.Api.Settings;
 
 namespace Tams.Api.Loans;
@@ -16,7 +17,7 @@ namespace Tams.Api.Loans;
 /// work, so one bad row cannot stall the rest.
 /// </summary>
 public sealed class LoanSweeper(IServiceScopeFactory scopes, IHubContext<LiveHub> hub, ISettings settings,
-    ILogger<LoanSweeper> logger) : BackgroundService
+    IApprovalPushSender push, ILogger<LoanSweeper> logger) : BackgroundService
 {
     static readonly TimeSpan Tick = TimeSpan.FromSeconds(5);
     const int LoanTicks = 3; // 15 s
@@ -31,6 +32,7 @@ public sealed class LoanSweeper(IServiceScopeFactory scopes, IHubContext<LiveHub
             if (n % LoanTicks != 0) continue;
             await RunAsync("transit timeouts", TransitAsync, stoppingToken);
             await RunAsync("overdue loans", OverdueAsync, stoppingToken);
+            await RunAsync("notice push", (db, _, now, ct) => NoticeDelivery.DeliverAsync(db, push, now, ct), stoppingToken);
             await RunAsync("event start", (db, _, now, ct) => db.Events
                 .Where(e => e.Status == EventStatus.Scheduled && e.StartsAt <= now && e.EndsAt > now)
                 .ExecuteUpdateAsync(u => u.SetProperty(e => e.Status, EventStatus.Active).SetProperty(e => e.UpdatedAt, now), ct), stoppingToken);
