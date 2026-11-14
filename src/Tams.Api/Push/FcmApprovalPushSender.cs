@@ -18,18 +18,43 @@ public sealed class FcmApprovalPushSender(HttpClient http, FcmCredentials creds,
     DateTimeOffset accessExpires;
     readonly SemaphoreSlim gate = new(1, 1);
 
-    public async Task<IReadOnlyList<string>> SendAsync(ApprovalPush push, IReadOnlyList<string> tokens, CancellationToken ct)
+    public bool NeedsTokens => true;
+
+    public Task<IReadOnlyList<string>> SendAsync(ApprovalPush push, IReadOnlyList<string> tokens, CancellationToken ct) =>
+        SendAllAsync(tokens, $"session {push.SessionId}", t => BuildRequest(push, t), ct);
+
+    public Task<IReadOnlyList<string>> SendNoticeAsync(NoticePush push, IReadOnlyList<string> tokens, CancellationToken ct) =>
+        SendAllAsync(tokens, $"notice {push.NotificationId}", t => BuildNoticeRequest(push, t), ct);
+
+    async Task<IReadOnlyList<string>> SendAllAsync(IReadOnlyList<string> tokens, string what, Func<string, JsonObject> build, CancellationToken ct)
     {
         if (tokens.Count == 0) return [];
         var bearer = await AccessTokenAsync(ct);
-        var results = await Task.WhenAll(tokens.Select(t => SendOneAsync(push, t, bearer, ct)));
+        var results = await Task.WhenAll(tokens.Select(t => SendOneAsync(build(t), what, bearer, ct)));
         return tokens.Where((_, i) => results[i]).ToList();
     }
 
-    /// <summary>True when FCM says the token is dead (UNREGISTERED / not found).</summary>
-    async Task<bool> SendOneAsync(ApprovalPush push, string token, string bearer, CancellationToken ct)
+    public static JsonObject BuildNoticeRequest(NoticePush push, string token) => new()
     {
-        var body = BuildRequest(push, token);
+        ["message"] = new JsonObject
+        {
+            ["token"] = token,
+            ["notification"] = new JsonObject { ["title"] = push.Title, ["body"] = push.Body },
+            ["data"] = new JsonObject
+            {
+                ["type"] = NoticePush.Type,
+                ["notificationId"] = push.NotificationId.ToString(),
+                ["noticeType"] = push.NoticeType,
+                ["payload"] = JsonSerializer.Serialize(push.ToMessage(), JsonSerializerOptions.Web),
+            },
+            ["android"] = new JsonObject { ["priority"] = "HIGH" },
+            ["apns"] = new JsonObject { ["headers"] = new JsonObject { ["apns-priority"] = "10" } },
+        },
+    };
+
+    /// <summary>True when FCM says the token is dead (UNREGISTERED / not found).</summary>
+    async Task<bool> SendOneAsync(JsonObject body, string what, string bearer, CancellationToken ct)
+    {
         using var req = new HttpRequestMessage(HttpMethod.Post, $"https://fcm.googleapis.com/v1/projects/{creds.ProjectId}/messages:send")
         {
             Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json"),
@@ -40,12 +65,12 @@ public sealed class FcmApprovalPushSender(HttpClient http, FcmCredentials creds,
             using var res = await http.SendAsync(req, ct);
             if (res.IsSuccessStatusCode) return false;
             var text = await res.Content.ReadAsStringAsync(ct);
-            log.LogWarning("FCM rejected a push for session {SessionId}: {Status} {Body}", push.SessionId, (int)res.StatusCode, text);
+            log.LogWarning("FCM rejected a push for {What}: {Status} {Body}", what, (int)res.StatusCode, text);
             return IsInvalidToken(res.StatusCode, text);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
-            log.LogWarning(ex, "FCM request failed for session {SessionId}.", push.SessionId);
+            log.LogWarning(ex, "FCM request failed for {What}.", what);
             return false;
         }
     }

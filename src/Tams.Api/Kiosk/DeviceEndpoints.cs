@@ -140,6 +140,10 @@ public static class DeviceEndpoints
         var evt = LoanRules.AnomalyEvent(anomaly, asset.AssetCode, loan?.LoanNo);
         outbox.Staff("anomaly.raised", evt);
         outbox.User(loan?.ApprovedByUserId ?? loan?.CoordinatorUserId, "anomaly.raised", evt);
+        // Only a loan has someone to tell; an unborrowed tap stays in the staff anomaly queue.
+        if (loan is not null)
+            LoanRules.Notify(db, loan.ApprovedByUserId ?? loan.CoordinatorUserId, "ANOMALY_RAISED", "Item scanned in the wrong room",
+                $"{asset.Name} ({asset.AssetCode}) was scanned in {station.StationCode}, not its approved room.", loan, evt, now);
     }
 
     static async Task<IResult> Heartbeat(string code, HeartbeatRequest req, HttpContext http, TamsDbContext db, ISettings settings,

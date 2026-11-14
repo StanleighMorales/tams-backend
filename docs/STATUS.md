@@ -66,14 +66,14 @@ Jira (project TAMS): TAMS-19 and TAMS-21 are in Deep Review and assumed approved
 ## Open decisions (not made, behaviour documented in `PERMISSIONS.md`)
 
 1. **Fingerprint matching (placeholder, blocks the pilot):** `FingerprintMatcher` scores 1 - hamming distance over the raw template bytes and takes the best score at or above `Kiosk:MatchThreshold` (default 0.85). Decrypted templates are cached in memory (`TemplateCache`, reloaded when the live template count or newest created_at changes, or on delete). 2,000 templates match in about 2 ms warm, 30 ms cold. Three failed scans in a session deny it. Raw bytes are not minutiae, so real AS608 captures still need calibration or a real matcher (kiosk uploads the sensor image, API matches with SourceAFIS).
-2. **Push notifications (TAMS-62):** approval requests are pushed (see "Approval push" below). Other notices (`notifications` rows, warnings, freezes) still reach a phone only over SignalR or by polling `GET /notifications`.
+2. **Push notifications (TAMS-62, TAMS-97):** approval requests are pushed (see "Approval push" below). Stored notices (warning, overdue, missing, freeze, wrong-room anomaly) are pushed by the sweeper every 15 s through the same provider, within 10 minutes of being created, and `delivered_at` is stamped; Fake emits `notice.push` over SignalR. A recipient with no device token keeps `delivered_at` null. Unborrowed-tap anomalies create no notice (no loan, so no recipient). Not tested against real FCM.
 3. **Custodian fingerprint rights:** custodians can start enrollments and delete fingerprints; FR-9.4 says "admin-initiated".
 4. **`/users` reads:** ADMIN and TECH_STAFF can read (employee numbers included). The original matrix said admin-only.
 5. **Event loans:** no coordinator freeze on overdue (the ladder names the approving instructor only), and no liability on missing, because `liabilities.student_id` is required.
 
 ## Known gaps
 
-- Not built: room RFID tags and station credentials (the PRD defines neither), push for notices other than approval requests (Open decisions #2), stored report files (`audits.report_file_id` stays null; reports render on request), Excel export (the checklist is CSV, which Excel opens).
+- Not built: room RFID tags and station credentials (the PRD defines neither), stored report files (`audits.report_file_id` stays null; reports render on request), Excel export (the checklist is CSV, which Excel opens).
 - Column names use a `_user_id` suffix where PRD 7.3 says `enrolled_by`, `started_by`, etc. Web and mobile need the final names.
 - `sections` and `asset_categories` have no `created_at` or `updated_at`; the PRD is ambiguous.
 - Roster CSV columns and limits are our own design (the PRD has none). Check the student-number pattern against the school's real format.
@@ -86,7 +86,7 @@ Jira (project TAMS): TAMS-19 and TAMS-21 are in Deep Review and assumed approved
 
 1. Pick the fingerprint matcher (Open decisions #1) and replace `KioskSessions.MatchAsync`.
 2. Write the kiosk and room-station firmware against `Kiosk/` (README "Kiosk and stations").
-3. Extend push beyond approval requests if wanted (Open decisions #2).
+3. ~~Extend push beyond approval requests~~ Done in TAMS-97; try it with real FCM credentials.
 4. ~~Still unexercised from pre-dev~~ Verified 2026-11-14 against the `docker compose up` stack through Caddy (`https://localhost/api`): refresh rotation, reuse detection (the reused token and its successor both give 401 `REFRESH_TOKEN_REUSED`), logout; roster import (dry run, create/update/unchanged, auto-created section, quoted comma field, lenient 200 and strict 422, wrong columns and no file 400); QR PNG/SVG, QR sheet PDF by ids and by category, 400/404/401 cases.
 5. Settle the remaining open decisions.
 6. Push `pre-dev`, the ticket branches and `feature/prd-transaction-core` to origin; open the PRs into `dev`.
