@@ -87,7 +87,7 @@ Jira (project TAMS): TAMS-19 and TAMS-21 are in Deep Review and assumed approved
 1. Pick the fingerprint matcher (Open decisions #1) and replace `KioskSessions.MatchAsync`.
 2. Write the kiosk and room-station firmware against `Kiosk/` (README "Kiosk and stations").
 3. Extend push beyond approval requests if wanted (Open decisions #2).
-4. Still unexercised from pre-dev: refresh and reuse detection, roster CSV import, the QR sheet and `docker compose up` itself (the smoke run used `dotnet run` against a PostgreSQL container).
+4. ~~Still unexercised from pre-dev~~ Verified 2026-11-14 against the `docker compose up` stack through Caddy (`https://localhost/api`): refresh rotation, reuse detection (the reused token and its successor both give 401 `REFRESH_TOKEN_REUSED`), logout; roster import (dry run, create/update/unchanged, auto-created section, quoted comma field, lenient 200 and strict 422, wrong columns and no file 400); QR PNG/SVG, QR sheet PDF by ids and by category, 400/404/401 cases.
 5. Settle the remaining open decisions.
 6. Push `pre-dev`, the ticket branches and `feature/prd-transaction-core` to origin; open the PRs into `dev`.
 7. Update the Jira statuses.

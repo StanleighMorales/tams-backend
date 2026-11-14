@@ -1,4 +1,7 @@
 using System.Text.Json;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 
 namespace Tams.Api.Tests.Integration;
 
@@ -134,6 +137,26 @@ public class SettingsAndAuditTests(ApiFixture api)
         Assert.Equal("asset", entry.GetProperty("entityType").GetString());
         Assert.NotEqual(JsonValueKind.Null, entry.GetProperty("actorUserId").ValueKind);
         Assert.NotEqual(JsonValueKind.Null, entry.GetProperty("after").ValueKind);
+    }
+
+    /// <summary>NFR-12: the database itself refuses to change or remove audit rows.</summary>
+    [Fact]
+    public async Task Audit_log_rejects_update_and_delete()
+    {
+        await Seed.Category(await api.As("ADMIN")); // at least one row
+        var cs = api.Services.GetRequiredService<IConfiguration>().GetConnectionString("Default");
+        await using var conn = new NpgsqlConnection(cs);
+        await conn.OpenAsync();
+        foreach (var sql in new[]
+        {
+            "UPDATE audit_log SET action = action WHERE id = (SELECT max(id) FROM audit_log)",
+            "DELETE FROM audit_log WHERE id = (SELECT max(id) FROM audit_log)",
+        })
+        {
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            var ex = await Assert.ThrowsAsync<PostgresException>(() => cmd.ExecuteNonQueryAsync());
+            Assert.Contains("append-only", ex.MessageText);
+        }
     }
 
     [Fact]
