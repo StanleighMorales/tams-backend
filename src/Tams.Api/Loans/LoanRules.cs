@@ -370,7 +370,10 @@ static class LoanRules
         return f;
     }
 
-    /// <summary>FR-6.5: one active hold per loan.</summary>
+    /// <summary>
+    /// FR-6.5: one active hold per loan. The hold stays until technical staff lift it with a reason (FR-6.8),
+    /// even after the item is returned; a return never lifts it.
+    /// </summary>
     static async Task EnsureHoldAsync(TamsDbContext db, Guid studentId, Guid loanId, DateTimeOffset now, CancellationToken ct)
     {
         if (await db.ProfileHolds.AnyAsync(h => h.LoanId == loanId && h.Status == PenaltyStatus.Active, ct)) return;
