@@ -51,6 +51,8 @@ static class SettingKeys
     public const string MaxActiveLoans = "max_active_loans_per_student";
     public const string MaxItems = "max_items_per_transaction";
     public const string StationKeyRequired = "station_key_required";
+    public const string KioskSessionRetentionDays = "kiosk_session_retention_days";
+    public const string NotificationRetentionDays = "notification_retention_days";
 }
 
 /// <summary>

@@ -19,6 +19,7 @@ using Tams.Api.Kiosk;
 using Tams.Api.Live;
 using Tams.Api.Loans;
 using Tams.Api.Push;
+using Tams.Api.Retention;
 using Tams.Api.Violations;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -47,6 +48,7 @@ builder.Services.AddDbContext<TamsDbContext>(o => o.UseNpgsql(connectionString, 
 builder.Services.AddTamsSettings();
 builder.Services.AddHostedService<EnrollmentSweeper>();
 builder.Services.AddHostedService<LoanSweeper>();
+builder.Services.AddHostedService<Tams.Api.Retention.RetentionSweeper>();
 builder.Services.AddSignalR();
 builder.Services.AddTamsPush(builder.Configuration, builder.Environment);
 
@@ -98,6 +100,7 @@ app.MapQrEndpoints();
 app.MapFacilityEndpoints();
 app.MapSettingsEndpoints();
 app.MapAuditLogEndpoints();
+app.MapRetentionEndpoints();
 app.MapKioskEndpoints();
 app.MapApprovalEndpoints();
 app.MapDeviceEndpoints();

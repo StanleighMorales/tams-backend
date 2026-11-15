@@ -1291,6 +1291,10 @@ namespace Tams.Api.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("photo_file_id");
 
+                    b.Property<DateTimeOffset?>("PhotoPurgedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("photo_purged_at");
+
                     b.Property<Guid?>("ReturnStationId")
                         .HasColumnType("uuid")
                         .HasColumnName("return_station_id");
@@ -1388,7 +1392,7 @@ namespace Tams.Api.Data.Migrations
 
                             t.HasCheckConstraint("ck_loans_grace", "grace_minutes BETWEEN 15 AND 30");
 
-                            t.HasCheckConstraint("ck_loans_standard_photo", "type <> 'STANDARD' OR photo_file_id IS NOT NULL");
+                            t.HasCheckConstraint("ck_loans_standard_photo", "type <> 'STANDARD' OR photo_file_id IS NOT NULL OR photo_purged_at IS NOT NULL");
                         });
                 });
 

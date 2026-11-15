@@ -141,7 +141,7 @@ public class TamsDbContext(DbContextOptions<TamsDbContext> options) : DbContext(
             "num_nonnulls(student_id, liable_user_id, liable_name) = 1"));
         b.Entity<Event>().ToTable(t => t.HasCheckConstraint("ck_events_period", "ends_at > starts_at"));
         // PRD 7.3: loans.photo_file_id is not null for STANDARD loans; BORROWABLE assets need a tag.
-        b.Entity<Loan>().ToTable(t => t.HasCheckConstraint("ck_loans_standard_photo", "type <> 'STANDARD' OR photo_file_id IS NOT NULL"));
+        b.Entity<Loan>().ToTable(t => t.HasCheckConstraint("ck_loans_standard_photo", "type <> 'STANDARD' OR photo_file_id IS NOT NULL OR photo_purged_at IS NOT NULL"));
         b.Entity<Asset>().ToTable(t => t.HasCheckConstraint("ck_assets_borrowable_tag", "type <> 'BORROWABLE' OR rfid_tag_uid IS NOT NULL"));
         b.Entity<CheckoutSession>().ToTable(t => t.HasCheckConstraint("ck_checkout_sessions_finger_index", "finger_index IS NULL OR finger_index BETWEEN 0 AND 9"));
     }
