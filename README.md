@@ -107,6 +107,12 @@ carries `item` (`assetCode`, `name`, `condition` GOOD, FAIR or DAMAGED) and the 
 DAMAGED item is refused in checkout (`failureCode: ASSET_DAMAGED`, LCD "Item damaged / See lab staff") and in
 event batch (same text, the batch carries on); returning a damaged item is still allowed.
 
+In event batch, **Cancel undoes the last item lent** (the loan is voided, the item goes back to `IN_STORAGE`, LCD "Removed LP-014");
+with nothing left to undo it ends the session. Staff void an unopened event loan from the web with
+`POST /api/loans/{id}/void` `{"reason":"..."}` (ADMIN, TECH_STAFF). Only an event loan that is still `ACTIVE` and has not reached
+its venue can be voided (`LOAN_NOT_VOIDABLE` otherwise). A voided loan stays as status `CANCELLED`; the append-only ledger gets a
+`VOIDED` row and the audit log a `LOAN_VOIDED` row with the actor.
+
 | Step | Call |
 |---|---|
 | Idle poll (picks up a staff-started enrollment) | `GET /api/kiosk/{code}/session` |

@@ -103,6 +103,10 @@ public sealed class KioskRig
     public async Task<string> AssetStatus(Guid assetId) =>
         (await Admin.GetAsync($"/api/assets/{assetId}").Ok()).GetProperty("status").GetString()!;
 
+    /// <summary>The newest loan row of an asset, as the loans list returns it.</summary>
+    public async Task<JsonElement> LoanOf(Guid assetId) =>
+        (await Admin.GetAsync($"/api/loans?assetId={assetId}").Ok()).GetProperty("items")[0];
+
     public static Guid SessionId(JsonElement view) => view.GetProperty("sessionId").GetGuid();
     public static string[] Lcd(JsonElement view) => view.GetProperty("lcdLines").EnumerateArray().Select(l => l.GetString()!).ToArray();
     public static string Status(JsonElement view) => view.GetProperty("status").GetString()!;

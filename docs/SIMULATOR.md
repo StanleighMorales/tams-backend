@@ -53,6 +53,10 @@ in event batch the same text shows and the batch carries on. Every kiosk respons
 `name`, `condition`), and the LCD's second line is "name - CONDITION". The simulator draws `lcdLines` as sent, so no panel change is
 needed; to try it, set an asset's condition to `DAMAGED` as admin (`PUT /assets/{id}`) and tap its tag.
 
+In the event batch scenario, **X / Cancel undoes the last item lent** (TAMS-120): the loan is voided (status `CANCELLED`), the item is back
+in storage and the LCD reads "Removed <code>"; with no items left, X ends the session as before. Staff can void an unopened event loan with
+`POST /loans/{id}/void` `{"reason":"..."}`; the loan detail shows a `VOIDED` ledger row.
+
 Wi-Fi off stops polling and heartbeats; the staff panel shows the station going Warning, then Offline (US-15).
 
 ## Panels and the Jira tickets

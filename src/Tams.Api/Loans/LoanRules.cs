@@ -354,6 +354,35 @@ static class LoanRules
         return loan;
     }
 
+    /// <summary>
+    /// Voids an unopened event loan (TAMS-120): it was lent by mistake. The loan becomes CANCELLED (kept, never deleted), the
+    /// asset goes back to IN_STORAGE and the append-only ledger gets a VOIDED row. "Unopened" means still ACTIVE and not yet
+    /// verified at its venue. Null when the loan is not like that. Caller owns the transaction and writes the audit row.
+    /// </summary>
+    public static async Task<Loan?> VoidAsync(TamsDbContext db, Outbox outbox, Guid loanId, DateTimeOffset now,
+        Guid? stationId, Guid? actorUserId, string? reason, CancellationToken ct)
+    {
+        var claimed = await db.Loans
+            .Where(l => l.Id == loanId && l.Type == LoanType.Event && l.Status == LoanStatus.Active && l.VerifiedAt == null
+                && (l.CustodyState == CustodyState.AwaitingArrival || l.CustodyState == CustodyState.NotRequired))
+            .ExecuteUpdateAsync(u => u.SetProperty(l => l.Status, LoanStatus.Cancelled), ct);
+        if (claimed == 0) return null;
+
+        var loan = await db.Loans.AsNoTracking().FirstAsync(l => l.Id == loanId, ct);
+        var asset = await db.Assets.FirstAsync(a => a.Id == loan.AssetId, ct);
+        var from = asset.Status;
+        asset.Status = AssetStatus.InStorage;
+        asset.CurrentRoomId = asset.HomeRoomId;
+        asset.UpdatedAt = now;
+        Ledger(db, LedgerEvent.Voided, loan, now, stationId, actorUserId, new { reason });
+        Audit(db, "LOAN_VOIDED", "loan", loan.Id, new { loan.LoanNo, reason }, actorUserId, stationId: stationId);
+        await db.SaveChangesAsync(ct);
+
+        outbox.Staff("asset.statusChanged", StatusChanged(asset.Id, from, AssetStatus.InStorage, asset.CurrentRoomId));
+        await OccupancyChangedAsync(db, outbox, loan.DestinationRoomId, now, ct);
+        return loan;
+    }
+
     static NonComplianceMark AddMark(TamsDbContext db, Guid studentId, Guid loanId, PenaltyReason reason, DateTimeOffset now)
     {
         var m = new NonComplianceMark { Id = Guid.NewGuid(), StudentId = studentId, LoanId = loanId, Reason = reason, IssuedAt = now };
