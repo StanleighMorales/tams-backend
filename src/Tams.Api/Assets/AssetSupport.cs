@@ -67,6 +67,10 @@ record AssetDto(
     decimal ReplacementCost, DateOnly? AcquiredAt, string? Notes, Guid? ImageFileId,
     DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, DateTimeOffset? DeletedAt)
 {
+    /// <summary>Only on the update that marks the asset DAMAGED: its last loan and borrower, so staff can assign liability (E5).</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public object? LastBorrower { get; init; }
+
     public static AssetDto From(Asset a) => new(
         a.Id, a.AssetCode, a.Name, a.CategoryId, EnumText.ToApi(a.Type), a.Brand, a.Model, a.SerialNo,
         a.RfidTagUid, a.HomeRoomId, a.CurrentRoomId, EnumText.ToApi(a.Status), EnumText.ToApi(a.Condition),

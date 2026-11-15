@@ -79,7 +79,7 @@ public static class ViolationEndpoints
             join l in db.Loans on x.LoanId equals l.Id
             from u in db.Users.Where(u => u.Id == x.LiableUserId).DefaultIfEmpty()
             orderby l.LoanNo
-            select new { x.Id, x.LoanId, l.LoanNo, x.Amount, x.LiableUserId, LiableName = x.LiableName ?? (u.FirstName + " " + u.LastName), l.BorrowerIdNo })
+            select new { x.Id, x.LoanId, l.LoanNo, x.Amount, Reason = Support.Label(x.Reason), x.LiableUserId, LiableName = x.LiableName ?? (u.FirstName + " " + u.LastName), l.BorrowerIdNo })
             .ToListAsync(ct);
 
         return Results.Ok(new
@@ -142,7 +142,7 @@ public static class ViolationEndpoints
             }),
             liabilities = liabilities.Select(l => new
             {
-                l.Id, l.LoanId, loanNo = loanNos.GetValueOrDefault(l.LoanId), l.AssetId, l.Amount, status = Support.Label(l.Status),
+                l.Id, l.LoanId, loanNo = loanNos.GetValueOrDefault(l.LoanId), l.AssetId, l.Amount, reason = Support.Label(l.Reason), status = Support.Label(l.Status),
                 l.ReceiptNo, l.SettledAt, l.SettledByUserId, l.Notes,
             }),
             openLoans = await LoanEndpoints.DtosAsync(db, open, ct),

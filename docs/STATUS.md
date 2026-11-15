@@ -75,6 +75,14 @@ Jira (project TAMS): TAMS-19 and TAMS-21 are in Deep Review and assumed approved
 - Not done: the flag check for ordinary kiosk checkouts is unchanged (the kiosk already refuses blocked students); there is no staff screen for lifting a coordinator freeze beyond the existing `/freezes/{id}/lift`.
 - Migration `20261116200000_EventBorrowerRecord`. Tests: `tests/Tams.Api.Tests/Integration/EventBorrowerTests.cs`.
 
+### Damage liability (TAMS-123, PRD-GAPS Q1 / E5)
+
+- Damage is never charged automatically. `PUT /assets/{id}` with `condition: DAMAGED` returns the asset plus `lastBorrower` (read only): the asset's most recent loan (`loan`: id, loanNo, type, status, checkedOutAt, returnedAt), the `borrower` (`STUDENT` incl. a student linked to an event loan, `EVENT_BORROWER` typed name and ID, or `COORDINATOR`) and `hasLiability`. The field is absent for other conditions or an asset that was never lent. The condition change is audit-logged as `ASSET_UPDATED` (before and after).
+- `POST /assets/{id}/damage-liability` `{loanId, amount, notes?}` (ADMIN, TECH_STAFF) creates an Outstanding liability with `reason = DAMAGE` against that loan's borrower (same selection as mark-missing, `LoanRules.Liable`) and writes `LIABILITY_CREATED`. Needs the asset to be DAMAGED (`ASSET_NOT_DAMAGED`), the loan to belong to the asset (`LOAN_NOT_FOUND`) and amount above 0. No hold, mark or freeze is created. Not assigning creates nothing.
+- New `liabilities.reason` (`liability_reason`: MISSING, DAMAGE, default MISSING); shown in the student standing and in `GET /violations` (`otherLiabilities`). Settling uses `/liabilities/{id}/settle`. An unsettled damage liability flags the person at their next event borrowing (E1 rules).
+- Limit: `liabilities.loan_id` is unique, so a loan that already has a liability (for example one declared missing) cannot also get a damage liability (`LIABILITY_EXISTS`).
+- Migration `20261116210000_DamageLiabilityReason`. Tests: `DamageLiabilityTests.cs` (`EventScenario` is shared with the E1 tests).
+
 ## Open decisions (not made, behaviour documented in `PERMISSIONS.md`)
 
 1. **Fingerprint matching (placeholder, blocks the pilot):** `FingerprintMatcher` scores 1 - hamming distance over the raw template bytes and takes the best score at or above `Kiosk:MatchThreshold` (default 0.85). Decrypted templates are cached in memory (`TemplateCache`, reloaded when the live template count or newest created_at changes, or on delete). 2,000 templates match in about 2 ms warm, 30 ms cold. Three failed scans in a session deny it. Raw bytes are not minutiae, so real AS608 captures still need calibration or a real matcher (kiosk uploads the sensor image, API matches with SourceAFIS).

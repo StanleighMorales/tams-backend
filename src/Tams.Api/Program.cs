@@ -102,6 +102,7 @@ app.MapApprovalEndpoints();
 app.MapDeviceEndpoints();
 app.MapLoanEndpoints();
 app.MapBorrowerEndpoints();
+app.MapDamageEndpoints();
 app.MapViolationEndpoints();
 app.MapEventEndpoints();
 app.MapInventoryAuditEndpoints();
