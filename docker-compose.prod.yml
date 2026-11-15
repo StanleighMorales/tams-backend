@@ -1,0 +1,28 @@
+# Production overlay for the VPS (docs/DEPLOY.md):
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+# Never combine it with docker-compose.dev.yml. Differences from the base file: required secrets
+# fail fast instead of defaulting, demo seeding and the bootstrap admin are forced off, and the FCM
+# service account comes from a file outside the repo instead of an environment variable.
+services:
+  api:
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      Jwt__Key: ${JWT_KEY:?set JWT_KEY in .env (openssl rand -base64 48)}
+      Cors__Origins: ${CORS_ORIGINS:?set CORS_ORIGINS in .env to the deployed front end}
+      Seed__Demo: "false"
+      Bootstrap__AdminEmail: ""
+      Bootstrap__AdminPassword: ""
+      Push__Provider: Fcm
+      Push__Fcm__CredentialsPath: /run/secrets/fcm_credentials
+      # Pocket-router note (deployment-decision.md section 7): turn on only with a stable egress address.
+      Kiosk__EnforceIp: ${KIOSK_ENFORCE_IP:-false}
+      Kiosk__AllowedIps: ${KIOSK_ALLOWED_IPS:-}
+    secrets:
+      - fcm_credentials
+  proxy:
+    environment:
+      TAMS_DOMAIN: ${TAMS_DOMAIN:?set TAMS_DOMAIN in .env to the real domain}
+
+secrets:
+  fcm_credentials:
+    file: ${FCM_CREDENTIALS_FILE:?set FCM_CREDENTIALS_FILE to the service-account JSON path}

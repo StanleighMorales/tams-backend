@@ -91,6 +91,11 @@ Jira (project TAMS): TAMS-19 and TAMS-21 are in Deep Review and assumed approved
 - FCM data message: `type=approval.requested`, `sessionId`, and `payload` (JSON string: `sessionId`, `studentName`, `photoUrl`, `asset`, `roomOptions`, `classLengthOptionsHours` [1.5,2,2.5,3], `classLengthOptionsMinutes`, `expiresAt`, `deadlineSeconds` (120), `request` = the full SignalR payload). `photoUrl` is relative and needs the bearer token to fetch.
 - Config: `Push:Provider` = `Fcm` | `Fake` | `None`. Unset means `Fake` in Development and `Fcm` elsewhere. `Fcm` needs `Push:Fcm:CredentialsJson` (service-account JSON, e.g. env `Push__Fcm__CredentialsJson`) or `Push:Fcm:CredentialsPath`; optional `Push:Fcm:ProjectId` overrides the JSON's `project_id`. Without credentials it logs an error and disables itself. `Fake` logs the payload and emits it over SignalR as `approval.push` to `user:{id}`, so no Firebase account is needed.
 
+### Production deployment (TAMS-129)
+
+- **In the repo:** `docker-compose.prod.yml` overlay (required `JWT_KEY`, `CORS_ORIGINS`, `TAMS_DOMAIN`; demo seed and bootstrap admin forced off; FCM service account from a file as a Compose secret), log rotation on every service, security headers in the `Caddyfile`, `scripts/uptime-check.sh` for the 07:00-21:00 `/health` check, and `docs/DEPLOY.md` with the exact server steps. PostgreSQL has no published port (checked in `docker compose config`).
+- **NOT DONE (needs a real server, domain and owner, TAMS-19):** VPS provisioning, key-only SSH and UFW, the domain and the issued certificate, encrypted database volume and how it was verified, the real secrets, running the uptime check, the pocket-router IP allowlist decision, ownership after the defense. The verification table at the end of `docs/DEPLOY.md` is empty on purpose; "Done when: the pilot URL runs over HTTPS from the server" is not met.
+
 ### Event loan borrower record (TAMS-122, PRD-GAPS Q1 / E1)
 
 - **Borrower record.** Staff register who actually holds event items: `PUT /loans/{id}/borrower` or `PUT /events/{id}/borrower` (all open loans of the event), body `{name, idNo, confirmPossibleMatch?, overrideReason?}`. Stored on the loan as `borrower_name`, `borrower_id_no`, `borrower_student_id`. Audit rows `LOAN_BORROWER_SET`; the loan DTO has `borrower`.
