@@ -63,6 +63,10 @@ public class Loan
     public Guid? ApprovedByUserId { get; set; }
     public Guid? CoordinatorUserId { get; set; }
     public Guid? EventId { get; set; }
+    // Event loans: who staff recorded as the actual borrower (name and ID number from a real ID); the student link is set when they match a roster student.
+    [MaxLength(150)] public string? BorrowerName { get; set; }
+    [MaxLength(40)] public string? BorrowerIdNo { get; set; }
+    public Guid? BorrowerStudentId { get; set; }
     public Guid SessionId { get; set; }
     public Guid? ApprovalId { get; set; }
     public Guid CheckoutStationId { get; set; }

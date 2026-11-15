@@ -137,6 +137,8 @@ public class TamsDbContext(DbContextOptions<TamsDbContext> options) : DbContext(
             t.HasCheckConstraint("ck_loans_class_length", "class_length_minutes IS NULL OR class_length_minutes BETWEEN 90 AND 180");
             t.HasCheckConstraint("ck_loans_grace", "grace_minutes BETWEEN 15 AND 30");
         });
+        b.Entity<Liability>().ToTable(t => t.HasCheckConstraint("ck_liabilities_one_liable",
+            "num_nonnulls(student_id, liable_user_id, liable_name) = 1"));
         b.Entity<Event>().ToTable(t => t.HasCheckConstraint("ck_events_period", "ends_at > starts_at"));
         // PRD 7.3: loans.photo_file_id is not null for STANDARD loans; BORROWABLE assets need a tag.
         b.Entity<Loan>().ToTable(t => t.HasCheckConstraint("ck_loans_standard_photo", "type <> 'STANDARD' OR photo_file_id IS NOT NULL"));

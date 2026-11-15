@@ -18,6 +18,10 @@
     <PackageReference Include="Scalar.AspNetCore" Version="2.19.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Tams.Api.Tests" />
+  </ItemGroup>
+
   <!-- Development simulator page (served at /sim in Development only; see docs/SIMULATOR.md). -->
   <ItemGroup>
     <Content Include="Sim\kiosk-sim.html" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

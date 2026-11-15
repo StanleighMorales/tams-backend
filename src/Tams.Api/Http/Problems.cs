@@ -13,6 +13,11 @@ public static class Problems
     public static IResult NotFound(string code, string detail) => Make(404, code, detail);
     public static IResult Conflict(string code, string detail) => Make(409, code, detail);
 
+    /// <summary>409 with extra fields next to <c>code</c> (for example the flag details of a refused borrower).</summary>
+    public static IResult Conflict(string code, string detail, IDictionary<string, object?> extra) =>
+        Results.Problem(statusCode: 409, detail: detail,
+            extensions: new Dictionary<string, object?>(extra) { ["code"] = code });
+
     /// <summary>400 with field errors keyed by field name; code is VALIDATION_FAILED.</summary>
     public static IResult Validation(IDictionary<string, string[]> errors) =>
         Results.ValidationProblem(errors, extensions: new Dictionary<string, object?> { ["code"] = "VALIDATION_FAILED" });

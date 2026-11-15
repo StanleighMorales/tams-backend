@@ -152,6 +152,8 @@ public static class KioskEndpoints
                                 && (l.Status == LoanStatus.Active || l.Status == LoanStatus.Overdue || l.Status == LoanStatus.Missing)))
                             .OrderByDescending(e => e.EndsAt).FirstOrDefaultAsync(ct);
                     if (evt is null) fail = session.Type == SessionType.EventBatch ? "NO_ACTIVE_EVENT" : "NO_EVENT_LOANS";
+                    // An overdue or missing event loan freezes the coordinator: no new batch until staff lift it. Returns stay open.
+                    else if (session.Type == SessionType.EventBatch && await LoanRules.IsFrozenAsync(db, user.Id, ct)) fail = ErrorCodes.InstructorFrozen;
                     else
                     {
                         session.EventId = evt.Id;
@@ -508,6 +510,8 @@ public static class KioskEndpoints
             var grace = await settings.GetIntAsync(SettingKeys.Grace, ct);
             await EndAsync(db, s, SessionStatus.Completed, null,
                 ["Done", $"{lent} items borrowed", $"Due {LocalTime.Clock(evt.EndsAt.AddMinutes(grace))}", ""], outbox, now, ct);
+            // Whoever presses Done is recorded, not made liable (the borrower record decides that).
+            LoanRules.Audit(db, "EVENT_BATCH_CLOSED", "checkout_session", s.Id, new { eventId = evt.Id, lent }, s.InstructorUserId, stationId: s.StationId);
         }
         else if (s.Type == SessionType.EventReturn && s.Status == SessionStatus.AwaitingAsset)
         {
@@ -516,6 +520,7 @@ public static class KioskEndpoints
             var stillOut = await db.Loans.CountAsync(l => l.EventId == s.EventId
                 && (l.Status == LoanStatus.Active || l.Status == LoanStatus.Overdue || l.Status == LoanStatus.Missing), ct);
             await EndAsync(db, s, SessionStatus.Completed, null, ["Done", $"{returned} returned", $"{stillOut} still out", ""], outbox, now, ct);
+            LoanRules.Audit(db, "EVENT_RETURN_CLOSED", "checkout_session", s.Id, new { eventId = s.EventId, returned, stillOut }, s.InstructorUserId, stationId: s.StationId);
         }
         else if (s.Type == SessionType.Return && s.Status == SessionStatus.AwaitingAsset)
         {
