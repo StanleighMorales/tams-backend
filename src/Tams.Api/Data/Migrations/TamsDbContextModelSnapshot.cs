@@ -954,6 +954,14 @@ namespace Tams.Api.Data.Migrations
                         .HasColumnType("bytea")
                         .HasColumnName("template");
 
+                    b.Property<string>("TemplateFormat")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("template_format")
+                        .HasDefaultValueSql("'RAW_V1'");
+
                     b.HasKey("Id")
                         .HasName("pk_fingerprint_templates");
 

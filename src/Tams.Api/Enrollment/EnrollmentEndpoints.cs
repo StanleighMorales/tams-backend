@@ -6,6 +6,7 @@ using Tams.Api.Auth;
 using Tams.Api.Data;
 using Tams.Api.Data.Entities;
 using Tams.Api.Http;
+using Tams.Api.Kiosk;
 using Tams.Api.Settings;
 using static Tams.Api.Enrollment.EnrollmentSessions;
 
@@ -13,8 +14,11 @@ namespace Tams.Api.Enrollment;
 
 public sealed record StartEnrollmentRequest(Guid StudentId, Guid StationId, short FingerIndex);
 
-/// <param name="Template">Base64 of the sensor template. Never echoed back or logged.</param>
-public sealed record SubmitFingerprintRequest(string? Template, string? SensorModel, short? QualityScore);
+/// <param name="Template">Legacy (RAW_V1): base64 of the sensor template. Never echoed back or logged.</param>
+/// <param name="Image">TAMS-128: base64 of the raw 8-bit grayscale sensor image (Width x Height bytes). Turned into a
+/// SourceAFIS template in memory and discarded; only the encrypted template is stored. Send this or Template.</param>
+public sealed record SubmitFingerprintRequest(string? Template, string? SensorModel, short? QualityScore,
+    string? Image = null, int? Width = null, int? Height = null);
 
 public static class EnrollmentEndpoints
 {
@@ -126,7 +130,7 @@ public static class EnrollmentEndpoints
         // Projection excludes the template column on purpose.
         var items = await db.FingerprintTemplates.AsNoTracking()
             .Where(t => t.StudentId == studentId).OrderBy(t => t.FingerIndex)
-            .Select(t => new { t.FingerIndex, t.SensorModel, t.QualityScore, t.EnrolledByUserId, t.EnrolledStationId, EnrolledAt = t.CreatedAt })
+            .Select(t => new { t.FingerIndex, t.TemplateFormat, t.SensorModel, t.QualityScore, t.EnrolledByUserId, t.EnrolledStationId, EnrolledAt = t.CreatedAt })
             .ToListAsync(ct);
         return Results.Ok(new { studentId, items });
     }
@@ -169,7 +173,18 @@ public static class EnrollmentEndpoints
 
         var errors = new Dictionary<string, string[]>();
         byte[] plain = [];
-        if (string.IsNullOrWhiteSpace(req.Template)) errors["template"] = ["Required (base64)."];
+        var format = "RAW_V1";
+        if (req.Image is not null)
+        {
+            if (req.Template is not null) errors["template"] = ["Send either image or template, not both."];
+            else if (SourceAfisMatcher.TryExtract(req.Image, req.Width, req.Height, out var err) is { } extracted)
+            {
+                plain = extracted.ToByteArray();
+                format = SourceAfisMatcher.Format;
+            }
+            else errors["image"] = [err!];
+        }
+        else if (string.IsNullOrWhiteSpace(req.Template)) errors["image"] = ["Required: base64 of the raw sensor image (or template, legacy)."];
         else
         {
             var buf = new byte[req.Template.Length];
@@ -207,6 +222,7 @@ public static class EnrollmentEndpoints
             StudentId = studentId,
             FingerIndex = fingerIndex,
             Template = cipher,
+            TemplateFormat = format,
             SensorModel = req.SensorModel!,
             QualityScore = req.QualityScore,
             EnrolledByUserId = s.InstructorUserId!.Value,

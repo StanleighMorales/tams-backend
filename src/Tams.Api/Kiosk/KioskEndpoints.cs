@@ -21,8 +21,11 @@ namespace Tams.Api.Kiosk;
 /// CHECKOUT, or EVENT_BATCH when its owner coordinates an event running now (FR-5.2).</param>
 public sealed record StartKioskSessionRequest(string? CardUid, string? Type);
 
-/// <param name="Template">Base64 of the sensor template. Never echoed back or logged.</param>
-public sealed record KioskFingerprintRequest(string? Template, string? SensorModel, short? QualityScore);
+/// <param name="Template">Legacy (RAW_V1): base64 of the sensor template. Never echoed back or logged.</param>
+/// <param name="Image">TAMS-128: base64 of the raw 8-bit grayscale sensor image (Width x Height bytes), processed in
+/// memory and never stored or logged. Send this or Template.</param>
+public sealed record KioskFingerprintRequest(string? Template, string? SensorModel, short? QualityScore,
+    string? Image = null, int? Width = null, int? Height = null);
 
 public sealed record KioskAssetRequest(string? TagUid);
 
@@ -207,13 +210,24 @@ public static class KioskEndpoints
         ISettings settings, IHubContext<LiveHub> hub, CancellationToken ct)
     {
         if (await TypeOfAsync(db, id, ct) == SessionType.Enrollment)
-            return await EnrollmentEndpoints.KioskSubmit(id, new SubmitFingerprintRequest(req.Template, req.SensorModel, req.QualityScore),
+            return await EnrollmentEndpoints.KioskSubmit(id, new SubmitFingerprintRequest(req.Template, req.SensorModel, req.QualityScore, req.Image, req.Width, req.Height),
                 http, db, settings, ct);
 
-        var buf = new byte[MaxTemplateBytes];
-        if (string.IsNullOrWhiteSpace(req.Template) || !Convert.TryFromBase64String(req.Template, buf, out var n) || n == 0)
-            return Invalid("template", $"Required: base64 of 1 to {MaxTemplateBytes} bytes.");
-        var probe = buf[..n];
+        byte[] probe = [];
+        SourceAFIS.FingerprintTemplate? probeTemplate = null;
+        if (req.Image is not null)
+        {
+            if (req.Template is not null) return Invalid("template", "Send either image or template, not both.");
+            probeTemplate = SourceAfisMatcher.TryExtract(req.Image, req.Width, req.Height, out var imageError);
+            if (probeTemplate is null) return Invalid("image", imageError!);
+        }
+        else
+        {
+            var buf = new byte[MaxTemplateBytes];
+            if (string.IsNullOrWhiteSpace(req.Template) || !Convert.TryFromBase64String(req.Template, buf, out var n) || n == 0)
+                return Invalid("image", $"Required: base64 of the raw sensor image with width and height (or, legacy, template of 1 to {MaxTemplateBytes} bytes).");
+            probe = buf[..n];
+        }
 
         var (now, outbox) = (DateTimeOffset.UtcNow, new Outbox());
         await using var tx = await db.Database.BeginTransactionAsync(ct);
@@ -223,7 +237,9 @@ public static class KioskEndpoints
         if (s!.Status != SessionStatus.AwaitingFingerprint) return InvalidState(s.Status, "submit a fingerprint");
 
         var idle = TimeSpan.FromSeconds(await settings.GetIntAsync(SettingKeys.IdleTimeout, ct));
-        var studentId = await MatchAsync(db, http.RequestServices, probe, ct);
+        var studentId = probeTemplate is null
+            ? await MatchAsync(db, http.RequestServices, probe, ct)
+            : await MatchAsync(db, http.RequestServices, probeTemplate, ct);
         if (studentId is null)
         {
             s.FingerprintAttempts++;

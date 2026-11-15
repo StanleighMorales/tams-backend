@@ -151,13 +151,23 @@ static class KioskSessions
     // ---------------------------------------------------------------- fingerprint 1:N (FR-1.3)
 
     /// <summary>
-    /// Matches the probe against the cached decrypted templates (see <see cref="FingerprintMatcher"/>).
+    /// Legacy path: matches raw template bytes against RAW_V1 rows (see <see cref="FingerprintMatcher"/>).
     /// Threshold: Kiosk:MatchThreshold, default <see cref="FingerprintMatcher.DefaultThreshold"/>.
     /// </summary>
     public static async Task<Guid?> MatchAsync(TamsDbContext db, IServiceProvider sp, byte[] probe, CancellationToken ct)
     {
         var threshold = sp.GetRequiredService<IConfiguration>().GetValue("Kiosk:MatchThreshold", FingerprintMatcher.DefaultThreshold);
-        return FingerprintMatcher.Match(probe, await TemplateCache.GetAsync(db, sp, ct), threshold);
+        return FingerprintMatcher.Match(probe, (await TemplateCache.GetAsync(db, sp, ct)).Raw, threshold);
+    }
+
+    /// <summary>
+    /// Real path (TAMS-128): matches a SourceAFIS template built from the uploaded image against SOURCEAFIS_V1 rows.
+    /// Threshold: Kiosk:SourceAfisThreshold, default <see cref="SourceAfisMatcher.DefaultThreshold"/> (provisional).
+    /// </summary>
+    public static async Task<Guid?> MatchAsync(TamsDbContext db, IServiceProvider sp, SourceAFIS.FingerprintTemplate probe, CancellationToken ct)
+    {
+        var threshold = sp.GetRequiredService<IConfiguration>().GetValue("Kiosk:SourceAfisThreshold", SourceAfisMatcher.DefaultThreshold);
+        return SourceAfisMatcher.Match(probe, (await TemplateCache.GetAsync(db, sp, ct)).Afis, threshold);
     }
 
     /// <summary>

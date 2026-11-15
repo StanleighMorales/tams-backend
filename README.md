@@ -108,7 +108,7 @@ the reason already on the LCD lines, not an HTTP error.
 |---|---|
 | Idle poll (picks up a staff-started enrollment) | `GET /api/kiosk/{code}/session` |
 | Card tap (or `{"type":"RETURN"}` to return an item) | `POST /api/kiosk/{code}/sessions` `{"cardUid":"A1B2C3D4"}` |
-| Fingerprint (base64 template) | `POST /api/kiosk/sessions/{id}/fingerprint` `{"template":"..."}` |
+| Fingerprint (base64 raw sensor image, 8-bit gray, `width` x `height` bytes) | `POST /api/kiosk/sessions/{id}/fingerprint` `{"image":"...","width":256,"height":288,"sensorModel":"AS608"}` |
 | Item tag | `POST /api/kiosk/sessions/{id}/asset` `{"tagUid":"04A1B2C3"}` |
 | Photo (multipart `file`, JPEG; no file = camera failed) | `POST /api/kiosk/sessions/{id}/photo` |
 | Poll every 2 s while `WAIT` | `GET /api/kiosk/sessions/{id}` |
@@ -120,11 +120,14 @@ The instructor approves from the phone (`GET /api/approvals/pending`, `POST /api
 Live events (PRD 6.4) arrive over SignalR at `/hubs/live?access_token=<jwt>`. Background jobs:
 `LoanSweeper` (transit timeouts, overdue, kiosk session expiry, station health).
 
-**The fingerprint matcher is a placeholder** (TAMS-58): bit-similarity over the raw template bytes
-against an in-memory cache of decrypted templates. It tolerates noisy rescans of the same bytes but is
-not real minutiae matching; see `docs/STATUS.md`. Calibration knob: `Kiosk:MatchThreshold` (default
-0.85, range 0 to 1; env `Kiosk__MatchThreshold`). To simulate a noisy rescan, flip about 5% of the bits of
-the enrolled template and submit it as base64.
+**Fingerprint matching (TAMS-128).** The kiosk uploads the sensor image; the API builds a SourceAFIS
+template in memory, matches it 1:N against an in-memory cache of decrypted templates, and discards the
+image. Only the encrypted template is stored (`template_format` = `SOURCEAFIS_V1`). Nothing image-like is
+written to disk, the database or logs. The threshold `Kiosk:SourceAfisThreshold` (env
+`Kiosk__SourceAfisThreshold`, default 40) is **provisional**: it is the library's documented 1-in-100,000
+false-match point and has not been calibrated on real AS608 captures (blocked on hardware TAMS-52). The
+old raw-template path (`Kiosk:MatchThreshold`, Hamming distance, `RAW_V1` rows) stays for the simulator
+and for rows enrolled before TAMS-128; see `docs/STATUS.md`.
 
 ## Database migrations
 
