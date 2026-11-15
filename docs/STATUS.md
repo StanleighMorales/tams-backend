@@ -124,6 +124,12 @@ Jira (project TAMS): TAMS-19 and TAMS-21 are in Deep Review and assumed approved
 4. **`/users` reads:** ADMIN and TECH_STAFF can read (employee numbers included). The original matrix said admin-only.
 5. ~~**Event loans:** no coordinator freeze or liability~~ Resolved by TAMS-122 (see "Event loan borrower record" below).
 
+### Backup and restore (TAMS-130)
+
+- **In the repo:** `backup` Compose service (`backup/`): nightly `pg_dump`, age encryption to a public key (private key off the server), the Data Protection key ring backed up alongside, 14-day retention locally and in an S3-compatible bucket, `backup.json` status that `/health` reports as `"backup":"ok|failed|stale|missing"`. `docs/RUNBOOK.md` has backup, restore and the drill log.
+- **Done locally:** a restore drill on Docker Desktop (backup, destroy volumes, restore into an empty stack, admin login) passed on 2026-11-16 and is recorded in the RUNBOOK. It used a fresh backup and local storage.
+- **NOT DONE:** the bucket (R2 or B2) account and credentials, running the upload against a real bucket, the nightly job on the VPS, an alert on failure beyond the `/health` field (a monitor must watch it), and the drill the ticket asks for (last night's real backup, clean machine). The `media` volume is not in the nightly backup.
+
 ## Known gaps
 
 - Not built: room RFID tags and station credentials (the PRD defines neither), stored report files (`audits.report_file_id` stays null; reports render on request, decided in the gap plan Q3).
