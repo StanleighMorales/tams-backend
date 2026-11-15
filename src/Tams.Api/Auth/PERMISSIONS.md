@@ -23,7 +23,7 @@ Roles: A = ADMIN, T = TECH_STAFF, C = CUSTODIAN, I = INSTRUCTOR. Routes omit the
 | `GET /users`, `GET /users/{id}` | x | x | | | ADMIN, TECH_STAFF (see Open decisions) |
 | `POST/PUT/DELETE /users`, `/users/{id}/deactivate`, `/activate`, `/reset-password` | x | | | | ADMIN only |
 | `GET /settings`, `GET /settings/{key}` | x | x | x | | ADMIN, TECH_STAFF, CUSTODIAN |
-| `PUT /settings`, `PUT /settings/{key}` | x | | | | ADMIN only |
+| `PUT /settings`, `PUT /settings/{key}` | x | x (one key) | | | ADMIN, except `max_items_per_transaction`, which TECH_STAFF may also set (S1-D2); any other key from TECH_STAFF is 403 `SETTING_ADMIN_ONLY` |
 | `GET /audit-log` | x | | | | ADMIN only (decision #10; read-only, no write routes) |
 | `POST /enrollment/sessions`, `GET /enrollment/sessions/{id}`, `POST .../cancel`, `GET/DELETE /students/{id}/fingerprints` | x | x | x | | ADMIN, TECH_STAFF, CUSTODIAN (see Open decisions) |
 | `/kiosk/enrollment/sessions/*`, `/kiosk/{code}/session`, `/kiosk/{code}/sessions`, `/kiosk/sessions/{id}/*` | anon | anon | anon | anon | AllowAnonymous: device traffic. `X-Station-Code` must match the session's counter kiosk, plus the optional IP allowlist (`StationAuth`) |

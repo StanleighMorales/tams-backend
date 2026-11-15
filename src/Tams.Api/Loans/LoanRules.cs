@@ -48,6 +48,7 @@ static class SettingKeys
     public const string WarningLimit = "late_arrival_warning_limit";
     public const string MarksBeforeBlock = "marks_before_block";
     public const string MaxActiveLoans = "max_active_loans_per_student";
+    public const string MaxItems = "max_items_per_transaction";
 }
 
 /// <summary>
@@ -157,8 +158,10 @@ static class LoanRules
 
         LateArrivalWarning? warning = null;
         ApprovalFreeze? freeze = null;
-        // One warning per loan (unique loan_id): a loan re-routed by staff that times out again gets none.
-        if (loan.StudentId is Guid sid && !await db.LateArrivalWarnings.AnyAsync(w => w.LoanId == loan.Id, ct))
+        // One warning per transaction (S1-D1): a loan re-routed by staff that times out again gets none, and neither does a
+        // second item of a multi-item checkout (its loans share the session).
+        if (loan.StudentId is Guid sid
+            && !await db.LateArrivalWarnings.AnyAsync(w => db.Loans.Any(l => l.Id == w.LoanId && l.SessionId == loan.SessionId), ct))
         {
             var limit = await settings.GetIntAsync(SettingKeys.WarningLimit, ct);
             var active = await db.LateArrivalWarnings.CountAsync(w => w.StudentId == sid && w.Status == PenaltyStatus.Active, ct);
@@ -238,7 +241,9 @@ static class LoanRules
         ApprovalFreeze? freeze = null;
         if (loan.StudentId is Guid sid)
         {
-            if (!await db.NonComplianceMarks.AnyAsync(m => m.LoanId == loan.Id && m.Reason == PenaltyReason.Overdue, ct))
+            // One mark per transaction (S1-D1): the loans of a multi-item checkout share the session.
+            if (!await db.NonComplianceMarks.AnyAsync(m => m.Reason == PenaltyReason.Overdue
+                    && db.Loans.Any(l => l.Id == m.LoanId && l.SessionId == loan.SessionId), ct))
                 AddMark(db, sid, loan.Id, PenaltyReason.Overdue, now);
             await EnsureHoldAsync(db, sid, loan.Id, now, ct);
         }

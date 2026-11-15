@@ -43,12 +43,16 @@ public static class ApprovalEndpoints
             where x.Id == s.StudentId
             join sec in db.Sections on x.SectionId equals sec.Id
             select new { x.Id, x.StudentNo, fullName = x.FirstName + " " + x.LastName, sectionCode = sec.Code }).FirstAsync(ct);
-        var asset = await db.Assets.AsNoTracking().Where(a => a.Id == s.AssetId)
-            .Select(a => new { a.Id, a.AssetCode, a.Name }).FirstAsync(ct);
+        // E8: every item of the transaction; `asset` stays the first one so a mobile build that knows one item keeps working.
+        var items = await (from i in db.CheckoutSessionItems.AsNoTracking() where i.SessionId == s.Id
+                           join a in db.Assets.AsNoTracking() on i.AssetId equals a.Id orderby i.CreatedAt
+                           select new { a.Id, a.AssetCode, a.Name, a.Condition }).ToListAsync(ct);
+        var asset = items[0];
         var instructor = await db.Users.AsNoTracking().Where(u => u.Id == s.InstructorUserId).Select(u => u.DefaultRoomId).FirstOrDefaultAsync(ct);
         return new
         {
-            sessionId = s.Id, student, asset, photoUrl = $"/api/approvals/{s.Id}/photo",
+            sessionId = s.Id, student, asset = new { asset.Id, asset.AssetCode, asset.Name },
+            items = items.Select(a => new { a.Id, a.AssetCode, a.Name, condition = EnumText.ToApi(a.Condition) }), photoUrl = $"/api/approvals/{s.Id}/photo",
             roomOptions = await RoomOptionsAsync(db, ct), defaultRoomId = instructor,
             classLengthOptions = LoanRules.ClassLengths,
             defaultClassLengthMinutes = await settings.GetIntAsync(SettingKeys.ClassLengthDefault, ct),
@@ -125,14 +129,15 @@ public static class ApprovalEndpoints
         approval.DecidedDevice = Device(http);
 
         var student = await db.Students.AsNoTracking().FirstAsync(x => x.Id == s!.StudentId, ct);
-        var asset = await db.Assets.AsNoTracking().FirstAsync(a => a.Id == s!.AssetId, ct);
+        var assets = await (from i in db.CheckoutSessionItems.AsNoTracking() where i.SessionId == s!.Id
+                            join a in db.Assets.AsNoTracking() on i.AssetId equals a.Id orderby i.CreatedAt select a).ToListAsync(ct);
         var grace = await settings.GetIntAsync(SettingKeys.Grace, ct);
         s!.Status = SessionStatus.AwaitingConfirm;
         s.DestinationRoomId = room.Id;
         s.ClassLengthMinutes = minutes;
         s.ExpiresAt = now.AddSeconds(await settings.GetIntAsync(SettingKeys.IdleTimeout, ct));
         // F1 step 8. The due time shown is an estimate; the loan takes it from the moment Confirm is pressed.
-        s.LcdLines = LcdJson.Write(Short(student), ItemLine(asset), $"To: {(room.Name.Length <= 16 ? room.Name : room.Code)}",
+        s.LcdLines = LcdJson.Write(Short(student), assets.Count == 1 ? ItemLine(assets[0]) : Several(assets), $"To: {(room.Name.Length <= 16 ? room.Name : room.Code)}",
             $"Due {LocalTime.Clock(now.AddMinutes(minutes + grace))} OK/X");
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);

@@ -32,9 +32,9 @@ public static class SettingsEndpoints
         g.MapPut("/{key}", async (string key, UpdateSettingRequest body, HttpContext http, TamsDbContext db, ISettings settings, CancellationToken ct) =>
             {
                 if (!SettingDefinitions.ByKey.ContainsKey(key)) return Unknown(key, 404);
-                return await Apply(new() { [key] = body.Value }, http, db, settings, ct);
+                return AdminOnly([key], http) ?? await Apply(new() { [key] = body.Value }, http, db, settings, ct);
             })
-            .RequireRoles(Roles.Admin);
+            .RequireRoles(Roles.Admin, Roles.TechStaff);
 
         // Flat object: { "grace_minutes": 20, "transit_window_minutes": 12 }. All or nothing.
         g.MapPut("/", async (Dictionary<string, JsonElement> body, HttpContext http, TamsDbContext db, ISettings settings, CancellationToken ct) =>
@@ -43,17 +43,23 @@ public static class SettingsEndpoints
                     return Problems.Validation(new Dictionary<string, string[]> { ["body"] = ["Provide at least one setting."] });
                 var unknown = body.Keys.Where(k => !SettingDefinitions.ByKey.ContainsKey(k)).ToArray();
                 if (unknown.Length > 0) return Unknown(string.Join(", ", unknown), 400);
-                return await Apply(body, http, db, settings, ct);
+                return AdminOnly(body.Keys, http) ?? await Apply(body, http, db, settings, ct);
             })
-            .RequireRoles(Roles.Admin);
+            .RequireRoles(Roles.Admin, Roles.TechStaff);
 
         return app;
     }
 
+    /// <summary>Settings are admin only, except the ones marked TechStaffCanEdit (max_items_per_transaction).</summary>
+    static IResult? AdminOnly(IEnumerable<string> keys, HttpContext http) =>
+        http.User.IsInRole(Roles.Admin) || keys.All(k => SettingDefinitions.ByKey[k].TechStaffCanEdit) ? null
+            : Problems.Forbidden("SETTING_ADMIN_ONLY", "Only an administrator can change this setting.");
+
     public sealed record UpdateSettingRequest(JsonElement Value);
 
     public sealed record SettingView(string Key, string Type, int Value, int Default, int? Min, int? Max, int[]? AllowedValues,
-        string Description, string Source, bool IsOverridden, DateTimeOffset? UpdatedAt, Guid? UpdatedByUserId);
+        string Description, string Source, bool IsOverridden, DateTimeOffset? UpdatedAt, Guid? UpdatedByUserId,
+        bool TechStaffCanEdit);
 
     static IResult Unknown(string key, int status) => status == 404
         ? Problems.NotFound("UNKNOWN_SETTING", $"No setting named '{key}'.")
@@ -124,7 +130,7 @@ public static class SettingsEndpoints
         {
             o.TryGetValue(d.Key, out var s);
             return new SettingView(d.Key, "integer", s?.Value ?? d.Default, d.Default, d.Min, d.Max, d.AllowedValues,
-                d.Description, d.Source, s is not null, s?.UpdatedAt, s?.UpdatedByUserId);
+                d.Description, d.Source, s is not null, s?.UpdatedAt, s?.UpdatedByUserId, d.TechStaffCanEdit);
         });
     }
 

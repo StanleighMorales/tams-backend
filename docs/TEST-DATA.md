@@ -181,7 +181,7 @@ Kiosk routes need the header `X-Station-Code: KIOSK-1` and no JWT. A missing or 
 
 A sample base64 template: `ZmFrZS1hczYwOC10ZW1wbGF0ZS0wMDAx` (any base64 text works; the matcher is still a placeholder).
 
-## 11. Settings (read: ADMIN/TECH_STAFF/CUSTODIAN; write: ADMIN)
+## 11. Settings (read: ADMIN/TECH_STAFF/CUSTODIAN; write: ADMIN, and TECH_STAFF for `max_items_per_transaction` only)
 
 | Key | Default | Allowed |
 |---|---|---|
@@ -196,6 +196,7 @@ A sample base64 template: `ZmFrZS1hczYwOC10ZW1wbGF0ZS0wMDAx` (any base64 text wo
 | `station_offline_missed_windows` | 2 | 1 to 10 |
 | `late_arrival_warning_limit` | 3 | from 0 |
 | `marks_before_block` | 2 | 1 to 10 |
+| `max_items_per_transaction` | 1 | 1 to 10 |
 | `enrollment_session_timeout_seconds` | 120 | see `/settings` |
 
 `GET /settings`, `GET /settings/grace_minutes`, `PUT /settings/grace_minutes` `{"value":20}` (200),
