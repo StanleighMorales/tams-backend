@@ -40,8 +40,8 @@ Roles: A = ADMIN, T = TECH_STAFF, C = CUSTODIAN, I = INSTRUCTOR. Routes omit the
 | `POST /warnings/reset-term` | x | | | | ADMIN only (FR-6.9 "admin action") |
 | `GET /events`, `GET /events/{id}` | x | x | x | x | INSTRUCTOR sees only events they coordinate |
 | `POST /events`, `PUT /events/{id}`, `POST /events/{id}/close` | x | x | | | ADMIN, TECH_STAFF (FR-5.1) |
-| `GET /rooms/{id}/roster`, `GET /rooms/{id}/checklist:export`, `GET/POST /audits`, `GET /audits/{id}`, `POST /audits/{id}/scans:batch`, `/complete`, `GET /audits/{id}/report` | x | x | x | | ADMIN, TECH_STAFF, CUSTODIAN |
-| `POST /rooms/{id}/roster`, `POST /audits/{id}/sign-off`, `POST /audits/import` | x | x | | | ADMIN, TECH_STAFF |
+| `GET /rooms/{id}/roster`, `GET /rooms/{id}/checklist:export` (csv or xlsx), `GET/POST /audits`, `GET /audits/{id}`, `POST /audits/{id}/scans:batch`, `/complete`, `GET /audits/{id}/report` (pdf, csv or xlsx) | x | x | x | | ADMIN, TECH_STAFF, CUSTODIAN |
+| `POST /rooms/{id}/roster`, `POST /audits/{id}/sign-off`, `POST /audits/import` (csv or xlsx) | x | x | | | ADMIN, TECH_STAFF |
 | `GET /notifications`, `POST /notifications/{id}/read`, `/hubs/live` (SignalR) | x | x | x | x | `Policies.AnyUser`; own notifications only; hub groups: staff, and `user:{id}` for everyone |
 
 `Policies.cs` also defines `Staff`, `AuditStaff`, `StaffOrInstructor`, `InstructorOnly` and `EventCoordinator`

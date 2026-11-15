@@ -19,6 +19,7 @@ Last updated: 2026-11-07. Branch of record: `pre-dev` (d6dc7f5), with `feature/p
 | TAMS-32 | `feature/TAMS-32-rooms-stations-cards-crud` | Rooms, stations, health summary, authorization cards |
 | TAMS-40 | `feature/TAMS-40-student-roster-csv-import` | Sections, students, `POST /students:import` |
 | TAMS-41 | `feature/TAMS-41-fingerprint-enrollment-api` | Enrollment session state machine, encrypted templates |
+| TAMS-125 | `feature/TAMS-125-xlsx-export-import` | `.xlsx` (ClosedXML) for `GET /rooms/{id}/checklist:export?format=xlsx`, `GET /audits/{id}/report?format=xlsx` and `POST /audits/import` (CSV or xlsx, detected by content) |
 | TAMS-42 | `feature/TAMS-42-settings-business-rules-api` | Typed settings catalogue and `ISettings` |
 | TAMS-43 | `feature/TAMS-43-asset-qr-endpoint` | `GET /assets/{id}/qr`, `POST /assets/qr-sheet` (PDF) |
 | (fixes) | `fix/conformance-api-behaviour` | Post-audit API fixes, `GET /audit-log` |
@@ -120,7 +121,7 @@ Jira (project TAMS): TAMS-19 and TAMS-21 are in Deep Review and assumed approved
 
 ## Known gaps
 
-- Not built: room RFID tags and station credentials (the PRD defines neither), stored report files (`audits.report_file_id` stays null; reports render on request), Excel export (the checklist is CSV, which Excel opens).
+- Not built: room RFID tags and station credentials (the PRD defines neither), stored report files (`audits.report_file_id` stays null; reports render on request, decided in the gap plan Q3).
 - Column names use a `_user_id` suffix where PRD 7.3 says `enrolled_by`, `started_by`, etc. Web and mobile need the final names.
 - `sections` and `asset_categories` have no `created_at` or `updated_at`; the PRD is ambiguous.
 - Roster CSV columns and limits are our own design (the PRD has none). Check the student-number pattern against the school's real format.
