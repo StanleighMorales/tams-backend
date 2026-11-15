@@ -25,6 +25,15 @@ public sealed class ApiClient(HttpClient http)
         return http.PostAsync(url, new MultipartFormDataContent { { file, field, fileName } });
     }
 
+    public Task<HttpResponseMessage> PostFileAsync(string url, byte[] bytes, string contentType, params (string Name, string Value)[] headers)
+    {
+        var file = new ByteArrayContent(bytes);
+        file.Headers.ContentType = new MediaTypeHeaderValue(contentType);
+        var req = new HttpRequestMessage(HttpMethod.Post, url) { Content = new MultipartFormDataContent { { file, "file", "upload" } } };
+        foreach (var (n, v) in headers) req.Headers.Add(n, v);
+        return http.SendAsync(req);
+    }
+
     /// <summary>Send with extra headers (kiosk routes need X-Station-Code).</summary>
     public Task<HttpResponseMessage> SendAsync(HttpMethod method, string url, string? json = null, params (string Name, string Value)[] headers)
     {

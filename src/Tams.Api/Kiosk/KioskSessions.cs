@@ -1,6 +1,7 @@
 using System.Linq.Expressions;
 using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
+using Tams.Api.Assets;
 using Tams.Api.Data;
 using Tams.Api.Data.Entities;
 using Tams.Api.Enrollment;
@@ -82,7 +83,15 @@ static class KioskSessions
         }
     }
 
-    public static object View(CheckoutSession s, DateTimeOffset now, int pollSeconds)
+    /// <summary>The last tapped item with its condition, so the kiosk can show both (F1 step 4). Null before any tap.</summary>
+    public static async Task<object?> ItemAsync(TamsDbContext db, CheckoutSession s, CancellationToken ct)
+    {
+        if (s.AssetId is not Guid id) return null;
+        var a = await db.Assets.AsNoTracking().Where(x => x.Id == id).Select(x => new { x.AssetCode, x.Name, x.Condition }).FirstOrDefaultAsync(ct);
+        return a is null ? null : new { a.AssetCode, a.Name, condition = EnumText.ToApi(a.Condition) };
+    }
+
+    public static object View(CheckoutSession s, DateTimeOffset now, int pollSeconds, object? item = null)
     {
         var lines = LcdJson.Read(s);
         if (s.Status == SessionStatus.AwaitingApproval)
@@ -91,7 +100,7 @@ static class KioskSessions
         {
             sessionId = s.Id, type = Support.Label(s.Type), status = Support.Label(s.Status), nextStep = NextStep(s.Status),
             lcdLines = lines, finished = !IsOpen(s.Status), failureCode = s.FailureCode, s.ExpiresAt,
-            pollIntervalSeconds = pollSeconds,
+            pollIntervalSeconds = pollSeconds, item,
         };
     }
 
@@ -120,6 +129,14 @@ static class KioskSessions
         return $"{(a.Name.Length > room ? a.Name[..room] : a.Name)} {a.AssetCode}".Trim();
     }
 
+    /// <summary>"Laptop - GOOD", the name cut to fit 20 columns.</summary>
+    public static string NameAndCondition(Asset a)
+    {
+        var cond = EnumText.ToApi(a.Condition);
+        var room = 20 - cond.Length - 3;
+        return $"{(a.Name.Length > room ? a.Name[..room] : a.Name)} - {cond}";
+    }
+
     public static string Reason(string code) => code switch
     {
         "CARD_UNKNOWN" => "Card not recognized",
@@ -136,6 +153,7 @@ static class KioskSessions
         "TAG_UNKNOWN" => "Unknown item tag",
         "ASSET_NOT_BORROWABLE" => "Item not borrowable",
         "ASSET_NOT_AVAILABLE" => "Item not available",
+        "ASSET_DAMAGED" => "Item damaged",
         "PHOTO_FAILED" => "Camera error",
         "APPROVAL_DECLINED" => "Declined by instr.",
         "APPROVAL_TIMEOUT" => "No approval in time",
@@ -146,6 +164,7 @@ static class KioskSessions
 
     public static string[] Denied(CheckoutSession s, string code) =>
         code == "FINGERPRINT_NOT_RECOGNIZED" ? ["Fingerprint not", "recognized", "See lab staff", ""] // 20-col LCD
+        : code == "ASSET_DAMAGED" ? ["Item damaged", "See lab staff", "", ""]
         : [Reason(code), s.Type == SessionType.Return || s.Type == SessionType.EventReturn ? "Return failed" : "Borrow denied", "See lab staff", ""];
 
     // ---------------------------------------------------------------- fingerprint 1:N (FR-1.3)

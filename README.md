@@ -102,7 +102,10 @@ Devices hold no credentials (FR-1.4). The counter kiosk sends `X-Station-Code: <
 every call; room stations name themselves in the path. Every kiosk response has the same shape:
 `sessionId`, `type`, `status`, `nextStep` (`FINGERPRINT`, `ASSET`, `PHOTO`, `WAIT`, `CONFIRM`, `DONE`),
 the 4 `lcdLines` to show, `failureCode` and `pollIntervalSeconds`. A denial is `status: FAILED` with
-the reason already on the LCD lines, not an HTTP error.
+the reason already on the LCD lines, not an HTTP error. Once an item tag has been tapped the response also
+carries `item` (`assetCode`, `name`, `condition` GOOD, FAIR or DAMAGED) and the LCD shows "Laptop - GOOD". A
+DAMAGED item is refused in checkout (`failureCode: ASSET_DAMAGED`, LCD "Item damaged / See lab staff") and in
+event batch (same text, the batch carries on); returning a damaged item is still allowed.
 
 | Step | Call |
 |---|---|

@@ -48,6 +48,11 @@ login it enrolls the student first.
    (green LED = `SUCCESS`), and the loan becomes verified in the room.
 5. Return: "Start RETURN", "Place finger", "Tap tag on kiosk". No confirm; the loan closes on the tag tap.
 
+A tap on a DAMAGED asset is refused (TAMS-119): checkout ends `FAILED` with `ASSET_DAMAGED` and the LCD reads "Item damaged / See lab staff";
+in event batch the same text shows and the batch carries on. Every kiosk response after a tag tap has an `item` object (`assetCode`,
+`name`, `condition`), and the LCD's second line is "name - CONDITION". The simulator draws `lcdLines` as sent, so no panel change is
+needed; to try it, set an asset's condition to `DAMAGED` as admin (`PUT /assets/{id}`) and tap its tag.
+
 Wi-Fi off stops polling and heartbeats; the staff panel shows the station going Warning, then Offline (US-15).
 
 ## Panels and the Jira tickets

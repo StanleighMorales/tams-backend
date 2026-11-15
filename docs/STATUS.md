@@ -56,6 +56,12 @@ Jira (project TAMS): TAMS-19 and TAMS-21 are in Deep Review and assumed approved
 - `max_active_loans_per_student` (FR-1.9, default 1) was added to settings. This resolves the old open decision on that setting.
 - Enrollment sessions also answer on the PRD's `/kiosk/sessions/{id}/...` paths. Enrollment views now return `UPPER_SNAKE` status like the rest of the API, which is a change from PascalCase.
 
+### Damaged items at the kiosk (TAMS-119)
+
+- A DAMAGED asset is refused at the tag tap in checkout (`FAILED`, `ASSET_DAMAGED`, LCD "Item damaged / See lab staff", the item stays `IN_STORAGE`) and in event batch (same LCD text, the batch carries on). Return is unchanged. The failed checkout is the FR-1.6 log row (session with its failure code).
+- Every kiosk response after a tag tap carries `item` (`assetCode`, `name`, `condition`) and the second LCD line is "name - CONDITION". `checkout_sessions.asset_id` now records the last tapped item in every session type. Hardware (TAMS-76, 78) needs the new text.
+- Integration tests build a whole kiosk with `KioskRig` (tests/Tams.Api.Tests/Integration).
+
 ### Approval push (TAMS-62)
 
 - Right after the photo commits (session enters `AWAITING_APPROVAL`), `ApprovalPushDispatcher` sends the PRD 6.4 `approval.requested` payload to the card owner's registered devices, in the background. Failures are logged and never reach the kiosk. Tokens FCM reports as unregistered are deleted from `device_tokens`.

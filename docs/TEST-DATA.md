@@ -100,7 +100,8 @@ Others: `GET /asset-categories?q=lap&sort=name&page=1&pageSize=10`, `GET /asset-
 ## 7. Assets
 
 Types: `BORROWABLE`, `FIXED`. Statuses: `IN_STORAGE`, `AT_COUNTER`, `IN_TRANSIT`, `IN_ROOM_VERIFIED`, `LOCATION_ANOMALY`, `OVERDUE`, `MISSING`, `MAINTENANCE`, `RETIRED`.
-Conditions: `GOOD`, `FAIR`, `DAMAGED`. A BORROWABLE asset needs an `rfidTagUid`.
+Conditions: `GOOD`, `FAIR`, `DAMAGED`. A BORROWABLE asset needs an `rfidTagUid`. The kiosk refuses a `DAMAGED` asset at the tag tap
+(`ASSET_DAMAGED`) in checkout and event batch; to test it, create an extra BORROWABLE asset with `"condition":"DAMAGED"`.
 
 `POST /assets` (201):
 ```json
