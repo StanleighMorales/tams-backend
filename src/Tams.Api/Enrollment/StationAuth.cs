@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using Tams.Api.Data;
 using Tams.Api.Data.Entities;
 
@@ -6,8 +8,7 @@ namespace Tams.Api.Enrollment;
 /// <summary>
 /// The one place that decides whether a kiosk request really comes from the station it names.
 /// PRD 6.2/10.2: kiosks hold no credentials; the defence is station_code plus, optionally, an IP
-/// allowlist (per-device keys are listed as future work). Swap the body when device keys or a
-/// station auth scheme land and every kiosk route here follows.
+/// allowlist. Room stations additionally carry a per-station key (TAMS-127, see IsRoomStationAuthenticated).
 ///
 /// 1. The request must carry <c>X-Station-Code</c> equal to the session's station_code (always).
 /// 2. With <c>Kiosk:EnforceIp=true</c> the caller's IP must also be stations.ip_address or one of the
@@ -28,6 +29,31 @@ public static class StationAuth
             return false;
 
         return IsDeviceAllowed(http, station);
+    }
+
+    public const string StationKeyHeader = "X-Station-Key";
+
+    /// <summary>A new random secret for a room station (64 hex characters). Shown once; only its hash is stored.</summary>
+    public static string NewKey() => Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(32));
+
+    public static string HashKey(string key) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(key)));
+
+    /// <summary>
+    /// Room-station scans and heartbeats (TAMS-127, G2): <see cref="IsDeviceAllowed"/> plus the per-station secret in
+    /// <c>X-Station-Key</c>, compared as hashes in constant time. A wrong key is always refused. A missing key, or a
+    /// station that has no key yet, is accepted only while <c>station_key_required</c> is 0 (the grace period that
+    /// lets existing stations keep working until their keys are loaded). Counter kiosks hold no credentials (FR-1.4).
+    /// </summary>
+    public static bool IsRoomStationAuthenticated(HttpContext http, Station station, bool keyRequired)
+    {
+        if (!IsDeviceAllowed(http, station)) return false;
+        if (station.Type != StationType.RoomStation) return true;
+
+        var presented = http.Request.Headers[StationKeyHeader].ToString().Trim();
+        if (presented.Length == 0) return !keyRequired;
+        if (station.KeyHash is null) return false;
+        return CryptographicOperations.FixedTimeEquals(
+            Encoding.ASCII.GetBytes(HashKey(presented)), Encoding.ASCII.GetBytes(station.KeyHash));
     }
 
     /// <summary>

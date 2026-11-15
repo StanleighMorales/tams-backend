@@ -32,6 +32,7 @@ students and demo accounts only when `Seed__Demo=true`.
 | Instructor card UID | `04A1B2C3` |
 | Item tags | LT-001 `E2000017221101441890`, LT-002 `04A1B2C3D4E5F6` |
 | Stations | counter kiosk `KIOSK-1`, room reader `ROOM-101` (in LAB-101); rooms LAB-101, LAB-102, STORE-1 |
+| Room reader key | `ROOM-101` has the key `demo-room-101-key` (seeded; the page sends it as `X-Station-Key`) |
 | Students | `2024-0001` Juan, `2024-0002` Maria, `2024-0003` Ana, `2024-0004` Pedro (no fingerprints yet) |
 
 Students have no enrolled finger in the seed. Use **Enrollment mode** (staff login needed), or run any scenario: with the staff
@@ -58,7 +59,7 @@ Wi-Fi off stops polling and heartbeats; the staff panel shows the station going 
 | PN532 reader | card and tag reads | `POST /kiosk/{code}/sessions`, `.../asset` | TAMS-51 (PN532 firmware) |
 | AS608 fingerprint | sensor, noise knob, wrong finger, enrollment | `.../fingerprint`, `POST /enrollment/sessions` | TAMS-52 (capture and upload), TAMS-53 (enrollment mode) |
 | Counter kiosk (LCD2004, buttons, buzzer, webcam) | 4x20 LCD from `lcdLines`, OK/X, tones per step, camera with retry and fault | `.../photo`, `.../confirm`, `.../cancel`, session polling | TAMS-76 (LCD), TAMS-77 (buttons, buzzer), TAMS-78 (checkout flow, 2 s polling) |
-| Room reader | room tag tap, LED and tone from `signal` | `POST /stations/{code}/scans` | TAMS-80 (room station build) |
+| Room reader | room tag tap, LED and tone from `signal`; sends the key from the "Room reader X-Station-Key" field | `POST /stations/{code}/scans` | TAMS-80 (room station build), TAMS-111 |
 | Instructor phone | approve or decline, destination room, class length | `/auth/login`, `/approvals/*`, `/hubs/live` | TAMS-35, TAMS-74, TAMS-75 (mobile approvals) |
 | Admin and loans | loan list and detail | `GET /loans`, `GET /loans/{id}` | TAMS-68, TAMS-69 (web loans) |
 | Scenarios | drive all of the above | all | acceptance checks for 50 to 53 |
@@ -92,6 +93,7 @@ with the scenarios.
 
 ## Making it behave like the hardware
 
+- **Station key (TAMS-127):** the room reader and its heartbeats send `X-Station-Key` from the "Room reader X-Station-Key" field (default `demo-room-101-key`, the seeded key of `ROOM-101`; the kiosk sends no key). Clear the field to see the grace period (accepted while `station_key_required` is 0), type a wrong key to see 403 `STATION_NOT_AUTHENTICATED`. To try a real key, rotate it as admin with `POST /api/stations/{id}/rotate-key` and paste the returned `key`.
 - **Latency, packet loss and HTTP timeout** (Network panel) apply to hardware calls only (kiosk, room reader, heartbeats). A dropped or
   timed-out request is logged and the LCD shows "Server timeout" or "No Wi-Fi", so the firmware's retry logic can be designed against it.
 - **AS608 template** is 512 bytes, the size of the sensor's character file (the API accepts 1 to 4096). The noise slider flips random

@@ -67,9 +67,12 @@ Types: `COUNTER_KIOSK`, `ROOM_STATION`. `POST /stations` (201):
 {"stationCode":"KIOSK-1","type":"COUNTER_KIOSK","roomId":"<STORE-1 id>","name":"Counter Kiosk"}
 {"stationCode":"ROOM-101","type":"ROOM_STATION","roomId":"<LAB-101 id>","name":"Lab 1 Reader"}
 ```
+Creating a `ROOM_STATION` also returns `"key"` (64 hex characters) once; later reads show only `"hasKey": true`. Counter kiosks get no key.
 Errors: duplicate `stationCode` 409.
 Others: `GET /stations?type=ROOM_STATION&roomId=<id>`, `GET /stations/health` (counts of online/warning/offline),
-`GET /stations/{id}`, `PUT /stations/{id}` (same shape plus `"status":"ACTIVE"`), `DELETE /stations/{id}`, `POST /stations/{id}/restore`.
+`GET /stations/{id}`, `PUT /stations/{id}` (same shape plus `"status":"ACTIVE"`), `DELETE /stations/{id}`, `POST /stations/{id}/restore`,
+`POST /stations/{id}/rotate-key` (200, new `"key"` once, the old one stops working; ADMIN, TECH_STAFF; 400 `STATION_KEY_NOT_APPLICABLE` for a kiosk, 404 for a deleted station).
+Room-station calls (`POST /stations/{code}/scans` and `/heartbeat`, no JWT) send `X-Station-Key: <key>`. A wrong key gives 403 `STATION_NOT_AUTHENTICATED`; a missing key does too once `station_key_required` is 1 (section 11). In the demo data ROOM-101 has the key `demo-room-101-key`.
 
 ## 5. Authorization cards
 
@@ -196,6 +199,7 @@ A sample base64 template: `ZmFrZS1hczYwOC10ZW1wbGF0ZS0wMDAx` (any base64 text wo
 | `late_arrival_warning_limit` | 3 | from 0 |
 | `marks_before_block` | 2 | 1 to 10 |
 | `enrollment_session_timeout_seconds` | 120 | see `/settings` |
+| `station_key_required` | 0 | 0 or 1 (0 = grace period: room stations without a key still work) |
 
 `GET /settings`, `GET /settings/grace_minutes`, `PUT /settings/grace_minutes` `{"value":20}` (200),
 `{"value":99}` (400), unknown key `PUT /settings/nope` (404),

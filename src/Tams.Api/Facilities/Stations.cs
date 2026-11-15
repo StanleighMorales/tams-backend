@@ -2,22 +2,24 @@ using Microsoft.EntityFrameworkCore;
 using Tams.Api.Auth;
 using Tams.Api.Data;
 using Tams.Api.Data.Entities;
+using Tams.Api.Enrollment;
 using Tams.Api.Http;
 
 namespace Tams.Api.Facilities;
 
 // Only admin-set fields are writable. firmwareVersion, ipAddress, lastHeartbeatAt and health come
-// from the heartbeat endpoint and sweep job (other tickets). Stations carry no API key or secret:
-// the PRD defines none (FR-1.4), so there is nothing to return after creation.
+// from the heartbeat endpoint and sweep job (other tickets). Room stations have a secret (TAMS-127):
+// created with the station or by rotate-key, returned once in "key", stored only as a hash.
+// Counter kiosks hold no credentials (FR-1.4), so they get no key.
 record StationWrite(string? StationCode, string? Type, Guid? RoomId, string? Name, string? Status);
 
 record StationDto(Guid Id, string StationCode, string Type, Guid RoomId, string Name, string? FirmwareVersion,
     string? IpAddress, DateTimeOffset? LastHeartbeatAt, string Health, string Status,
-    DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, DateTimeOffset? DeletedAt)
+    DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, DateTimeOffset? DeletedAt, bool HasKey, string? Key = null)
 {
-    public static StationDto From(Station s) => new(s.Id, s.StationCode, Support.Label(s.Type), s.RoomId, s.Name,
+    public static StationDto From(Station s, string? key = null) => new(s.Id, s.StationCode, Support.Label(s.Type), s.RoomId, s.Name,
         s.FirmwareVersion, s.IpAddress, s.LastHeartbeatAt, Support.Label(s.Health), Support.Label(s.Status),
-        s.CreatedAt, s.UpdatedAt, s.DeletedAt);
+        s.CreatedAt, s.UpdatedAt, s.DeletedAt, s.KeyHash is not null, key);
 }
 
 record StationHealthItem(Guid Id, string StationCode, string Name, string Type, Guid RoomId, string Health,
@@ -39,6 +41,7 @@ public static class StationEndpoints
         g.MapPost("/", Create).RequireRoles(FacilityRoles.Write);
         g.MapPut("/{id:guid}", Update).RequireRoles(FacilityRoles.Write);
         g.MapDelete("/{id:guid}", Delete).RequireRoles(FacilityRoles.Write);
+        g.MapPost("/{id:guid}/rotate-key", RotateKey).RequireRoles(FacilityRoles.Write);
         g.MapPost("/{id:guid}/restore", Restore).RequireRoles(Roles.Admin);
         return app;
     }
@@ -79,7 +82,7 @@ public static class StationEndpoints
         var (page, size) = Support.Clamp(q);
         var total = await query.CountAsync(ct);
         var items = await query.Skip((page - 1) * size).Take(size).ToListAsync(ct);
-        return Results.Ok(new Paged<StationDto>(items.Select(StationDto.From).ToList(), total, page, size));
+        return Results.Ok(new Paged<StationDto>(items.Select(s => StationDto.From(s)).ToList(), total, page, size));
     }
 
     // Reads the health the sweep job maintains (PRD 7.3: "updated by sweep job"); it does not recompute it.
@@ -140,11 +143,34 @@ public static class StationEndpoints
             CreatedAt = now,
             UpdatedAt = now,
         };
+        string? key = null;
+        if (type == StationType.RoomStation)
+        {
+            key = StationAuth.NewKey();
+            station.KeyHash = StationAuth.HashKey(key);
+        }
         db.Stations.Add(station);
         Support.Audit(db, http, "STATION_CREATED", "station", station.Id, null, StationDto.From(station));
+        if (key is not null) Support.Audit(db, http, "STATION_KEY_CREATED", "station", station.Id, null, new { station.StationCode });
         try { await db.SaveChangesAsync(ct); }
         catch (DbUpdateException ex) when (Support.IsUniqueViolation(ex)) { return CodeTaken(code, false); }
-        return Results.Created($"/stations/{station.Id}", StationDto.From(station));
+        return Results.Created($"/stations/{station.Id}", StationDto.From(station, key));
+    }
+
+    /// <summary>Issues a new secret and invalidates the old one at once. The key is in this response only.</summary>
+    static async Task<IResult> RotateKey(Guid id, HttpContext http, TamsDbContext db, CancellationToken ct)
+    {
+        var s = await db.Stations.FirstOrDefaultAsync(x => x.Id == id && x.DeletedAt == null, ct);
+        if (s is null) return Problems.NotFound("STATION_NOT_FOUND", "Station not found.");
+        if (s.Type != StationType.RoomStation)
+            return Problems.BadRequest("STATION_KEY_NOT_APPLICABLE", "Only room stations have a key; counter kiosks hold no credentials.");
+
+        var key = StationAuth.NewKey();
+        s.KeyHash = StationAuth.HashKey(key);
+        s.UpdatedAt = DateTimeOffset.UtcNow;
+        Support.Audit(db, http, "STATION_KEY_ROTATED", "station", s.Id, null, new { s.StationCode });
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(StationDto.From(s, key));
     }
 
     static async Task<IResult> Update(Guid id, StationWrite body, HttpContext http, TamsDbContext db, CancellationToken ct)

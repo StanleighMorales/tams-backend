@@ -58,6 +58,7 @@ nav a{color:var(--accent)}nav a.on{font-weight:700;text-decoration:none;color:va
   <label>API base URL<input id="base" size="22" autocomplete="off"></label>
   <label>Counter kiosk <small>station_code</small><input id="station" size="10" autocomplete="off"></label>
   <label>Room reader <small>station_code</small><input id="roomStation" size="10" autocomplete="off"></label>
+  <label>Room reader <small>X-Station-Key</small><input id="roomKey" size="14" autocomplete="off"></label>
   <label class="inline"><input type="checkbox" id="wifi" checked> Wi-Fi on</label>
   <label class="inline"><input type="checkbox" id="mute"> Mute buzzer</label>
   <label class="inline"><input type="checkbox" id="showPolls"> Show polls in log</label>
@@ -243,12 +244,12 @@ for (const a of document.querySelectorAll("nav a")) if (a.getAttribute("href") =
 const STORE_KEY = "tams-sim" + (device ? "-" + device : "");
 const DEFAULTS = {
   latency: 0, loss: 0, timeout: 5, roomTagUid: "E2000017221101441890",
-  base: "/api", station: "KIOSK-1", roomStation: "ROOM-101", hbInterval: 30, hbJitter: 2, hbKiosk: true, hbRoom: true,
+  base: "/api", station: "KIOSK-1", roomStation: "ROOM-101", roomKey: "demo-room-101-key", hbInterval: 30, hbJitter: 2, hbKiosk: true, hbRoom: true,
   cardUid: "04A1B2C3", tagUid: "E2000017221101441890", studentNo: "2024-0001", fingerIdx: 1, noise: 0,
   autoPhoto: true, mute: false, showPolls: false, scLen: "90",
   phEmail: "instructor@tams.test", phPw: "Demo#Pass123", stEmail: "admin@tams.test", stPw: "Admin#Pass123", loansAuto: true,
 };
-const SAVED = ["base","station","roomStation","hbInterval","hbJitter","hbKiosk","hbRoom","latency","loss","timeout","roomTagUid","cardUid","tagUid","studentNo","fingerIdx","noise","autoPhoto","mute","showPolls","scLen","phEmail","stEmail","loansAuto"];
+const SAVED = ["base","station","roomStation","roomKey","hbInterval","hbJitter","hbKiosk","hbRoom","latency","loss","timeout","roomTagUid","cardUid","tagUid","studentNo","fingerIdx","noise","autoPhoto","mute","showPolls","scLen","phEmail","stEmail","loansAuto"];
 let cfg = { ...DEFAULTS };
 try { Object.assign(cfg, JSON.parse(localStorage.getItem(STORE_KEY) || "{}")); } catch { /* private window: run on defaults */ }
 function saveCfg() { try { localStorage.setItem(STORE_KEY, JSON.stringify(Object.fromEntries(SAVED.map(k => [k, cfg[k]])))); } catch { /* ignore */ } }
@@ -282,7 +283,7 @@ $("logCopy").onclick = async () => { try { await navigator.clipboard.writeText([
 
 const actors = { phone: { tag: "PHONE" }, staff: { tag: "STAFF" } };
 function url(path) { return cfg.base.replace(/\/$/, "") + path; }
-/** opts: body, form, station (send X-Station-Code), hw (Wi-Fi gated), actor, poll */
+/** opts: body, form, station (send X-Station-Code), key (send X-Station-Key), hw (Wi-Fi gated), actor, poll */
 async function api(method, path, o = {}) {
   const tag = o.tag || (o.actor ? actors[o.actor].tag : "HW");
   if (o.hw && !wifiOn()) { logLine("s0", `${tag} ${method} ${path} -> BLOCKED (Wi-Fi off)`, "", o.poll); return { status: 0, ok: false, data: null, offline: true }; }
@@ -292,6 +293,7 @@ async function api(method, path, o = {}) {
   }
   const headers = {};
   if (o.station) headers["X-Station-Code"] = cfg.station;
+  if (o.key && cfg.roomKey.trim()) headers["X-Station-Key"] = cfg.roomKey.trim();
   if (o.actor && actors[o.actor].token) headers.Authorization = "Bearer " + actors[o.actor].token;
   let body;
   if (o.form) body = o.form; else if (o.body !== undefined) { headers["Content-Type"] = "application/json"; body = JSON.stringify(o.body); }
@@ -463,7 +465,7 @@ const t0 = Date.now(); let hbTimer;
 async function heartbeat() {
   const codes = [$("hbKiosk").checked && cfg.station, $("hbRoom").checked && cfg.roomStation].filter(Boolean); let msg = [];
   for (const c of codes) {
-    const r = await api("POST", `/stations/${encodeURIComponent(c)}/heartbeat`, { hw: true, tag: "HB", body: { firmwareVersion: "1.0.3-sim", rssi: -55 - Math.floor(Math.random() * 15), uptimeS: Math.floor((Date.now() - t0) / 1000), freeHeap: 180000 - Math.floor(Math.random() * 5000) } });
+    const r = await api("POST", `/stations/${encodeURIComponent(c)}/heartbeat`, { hw: true, tag: "HB", key: c === cfg.roomStation && c !== cfg.station, body: { firmwareVersion: "1.0.3-sim", rssi: -55 - Math.floor(Math.random() * 15), uptimeS: Math.floor((Date.now() - t0) / 1000), freeHeap: 180000 - Math.floor(Math.random() * 5000) } });
     msg.push(`${c}: ${r.offline ? "blocked" : r.status}`);
   }
   $("hbStatus").textContent = "Last heartbeat " + new Date().toLocaleTimeString() + " " + msg.join(", ");
@@ -569,7 +571,7 @@ async function loadStudents() {
 
 // ---------------------------------------------------------------- room reader + enrollment
 async function roomTap(tag) {
-  const r = await api("POST", `/stations/${encodeURIComponent(cfg.roomStation)}/scans`, { hw: true, tag: "ROOM", body: { tagUid: tag || cfg.roomTagUid } });
+  const r = await api("POST", `/stations/${encodeURIComponent(cfg.roomStation)}/scans`, { hw: true, tag: "ROOM", key: true, body: { tagUid: tag || cfg.roomTagUid } });
   if (r.ok) {
     const good = r.data.signal === "SUCCESS"; $("roomLed").className = "led " + (good ? "green" : "red"); $("roomRes").textContent = `${r.data.result} ${r.data.assetCode || ""}`;
     (good ? SOUNDS.OK : SOUNDS.DENY)(); setTimeout(() => { $("roomLed").className = "led"; }, 2500); refreshLoansSoon();

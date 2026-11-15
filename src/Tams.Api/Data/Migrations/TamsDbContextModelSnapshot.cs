@@ -1798,6 +1798,11 @@ namespace Tams.Api.Data.Migrations
                         .HasColumnType("character varying(45)")
                         .HasColumnName("ip_address");
 
+                    b.Property<string>("KeyHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("key_hash");
+
                     b.Property<DateTimeOffset?>("LastHeartbeatAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("last_heartbeat_at");
