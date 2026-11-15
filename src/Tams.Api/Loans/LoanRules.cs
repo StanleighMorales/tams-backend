@@ -303,10 +303,8 @@ static class LoanRules
             var liability = new Liability
             {
                 Id = Guid.NewGuid(), LoanId = loan.Id, AssetId = asset.Id, Amount = amount ?? asset.ReplacementCost, Notes = note,
-                StudentId = sid,
-                LiableName = sid is null ? loan.BorrowerName : null,
-                LiableUserId = sid is null && loan.BorrowerName is null ? loan.CoordinatorUserId : null,
             };
+            (liability.StudentId, liability.LiableName, liability.LiableUserId) = Liable(loan);
             db.Liabilities.Add(liability);
             Audit(db, "LIABILITY_CREATED", "liability", liability.Id,
                 new { loanId = loan.Id, liability.StudentId, liability.LiableName, liability.LiableUserId, liability.Amount }, actor, ip: ip);
@@ -414,6 +412,15 @@ static class LoanRules
         var h = new ProfileHold { Id = Guid.NewGuid(), StudentId = studentId, LoanId = loanId, PlacedAt = now };
         db.ProfileHolds.Add(h);
         Audit(db, "HOLD_PLACED", "profile_hold", h.Id, new { studentId, loanId });
+    }
+
+    /// <summary>Who owes for a loan (PRD-GAPS Q1): the student (or the student linked as event borrower), else the typed event borrower, else the event coordinator. Exactly one is set.</summary>
+    public static (Guid? StudentId, string? LiableName, Guid? LiableUserId) Liable(Loan loan)
+    {
+        var student = loan.StudentId ?? loan.BorrowerStudentId;
+        return student is not null ? (student, null, null)
+            : loan.BorrowerName is not null ? (null, loan.BorrowerName, null)
+            : (null, null, loan.CoordinatorUserId);
     }
 
     /// <summary>The account that answers for a loan: the approving instructor, or the coordinator of an event loan.</summary>

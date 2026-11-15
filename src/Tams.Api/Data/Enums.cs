@@ -24,6 +24,7 @@ public enum AnomalyType { TransitTimeout, WrongRoom, UnborrowedTap }
 public enum AnomalyStatus { Open, Acknowledged, Resolved }
 public enum PenaltyStatus { Active, Cleared }
 public enum PenaltyReason { LateArrivalLimit, Overdue, Missing }
+public enum LiabilityReason { Missing, Damage }
 public enum LiabilityStatus { Outstanding, SettledPayment, SettledReplacement, Waived }
 public enum EventStatus { Scheduled, Active, Closed, Cancelled }
 public enum AuditSource { Mobile, ExternalImport }

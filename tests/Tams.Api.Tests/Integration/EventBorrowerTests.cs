@@ -17,54 +17,8 @@ public class EventBorrowerTests(ApiFixture api)
     readonly string tag = Seed.Tag();
     string Maria => "Maria" + tag;
     string Pedro => "Pedro" + tag;
+    Task<EventScenario> NewEvent(int loans = 1) => EventScenario.Create(api, loans);
 
-    sealed record Scenario(Guid CoordinatorId, string CardUid, Guid StationId, string StationCode, Guid EventId, List<Guid> LoanIds);
-
-    /// <summary>A running event with a coordinator and the given number of open event loans, inserted directly (the kiosk flow is covered elsewhere).</summary>
-    async Task<Scenario> NewEvent(int loans = 1)
-    {
-        var admin = await api.As("ADMIN");
-        var (coordinator, _, _) = await Seed.User(admin, "INSTRUCTOR", coordinator: true);
-        var uid = Seed.Hex(4);
-        await admin.PostRawAsync("/api/auth-cards", $$"""{"cardUid":"{{uid}}","userId":"{{coordinator}}"}""").Ok(201);
-        var room = await Seed.Room(admin, storage: true);
-        var (stationId, stationCode) = await Seed.Station(admin, room);
-        var category = await Seed.Category(admin);
-
-        using var scope = api.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<TamsDbContext>();
-        var now = DateTimeOffset.UtcNow;
-        var evt = new Event
-        {
-            Id = Guid.NewGuid(), Title = "Fair " + Seed.Tag(), VenueText = "Gym", StartsAt = now.AddHours(-1), EndsAt = now.AddHours(3),
-            CoordinatorUserId = coordinator, Status = EventStatus.Active, CreatedByUserId = coordinator, CreatedAt = now, UpdatedAt = now,
-        };
-        db.Events.Add(evt);
-        var session = new CheckoutSession
-        {
-            Id = Guid.NewGuid(), StationId = stationId, Type = SessionType.EventBatch, Status = SessionStatus.Completed,
-            InstructorUserId = coordinator, EventId = evt.Id, ExpiresAt = now, CreatedAt = now, CompletedAt = now,
-        };
-        db.CheckoutSessions.Add(session);
-        await db.SaveChangesAsync();
-
-        var ids = new List<Guid>();
-        for (var i = 0; i < loans; i++)
-        {
-            var (assetId, _, _) = await Seed.BorrowableAsset(admin, category, room);
-            var loan = new Loan
-            {
-                Id = Guid.NewGuid(), LoanNo = "L" + Seed.Tag() + i, Type = LoanType.Event, AssetId = assetId, CoordinatorUserId = coordinator,
-                EventId = evt.Id, SessionId = session.Id, CheckoutStationId = stationId, Status = LoanStatus.Active,
-                CustodyState = CustodyState.NotRequired, CheckedOutAt = now, ClassEndsAt = evt.EndsAt, GraceMinutes = 15,
-                DueAt = evt.EndsAt.AddMinutes(15),
-            };
-            db.Loans.Add(loan);
-            ids.Add(loan.Id);
-        }
-        await db.SaveChangesAsync();
-        return new(coordinator, uid, stationId, stationCode, evt.Id, ids);
-    }
 
     static string Body(string name, string idNo, string? extra = null) =>
         $$"""{"name":"{{name}}","idNo":"{{idNo}}"{{(extra is null ? "" : "," + extra)}}}""";

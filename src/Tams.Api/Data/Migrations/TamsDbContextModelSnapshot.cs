@@ -34,6 +34,7 @@ namespace Tams.Api.Data.Migrations
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "device_platform", new[] { "ANDROID", "IOS", "WEB" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "event_status", new[] { "SCHEDULED", "ACTIVE", "CLOSED", "CANCELLED" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "ledger_event", new[] { "CHECKOUT", "ROOM_VERIFIED", "LATE_ARRIVAL_WARNING", "RETURN", "OVERDUE", "MARKED_MISSING", "SETTLED", "VOIDED" });
+            NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "liability_reason", new[] { "MISSING", "DAMAGE" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "liability_status", new[] { "OUTSTANDING", "SETTLED_PAYMENT", "SETTLED_REPLACEMENT", "WAIVED" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "loan_status", new[] { "ACTIVE", "OVERDUE", "RETURNED", "MISSING", "CANCELLED" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "loan_type", new[] { "STANDARD", "EVENT" });
@@ -1133,6 +1134,12 @@ namespace Tams.Api.Data.Migrations
                     b.Property<string>("Notes")
                         .HasColumnType("text")
                         .HasColumnName("notes");
+
+                    b.Property<LiabilityReason>("Reason")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("liability_reason")
+                        .HasColumnName("reason")
+                        .HasDefaultValueSql("'MISSING'::liability_reason");
 
                     b.Property<string>("ReceiptNo")
                         .HasMaxLength(40)

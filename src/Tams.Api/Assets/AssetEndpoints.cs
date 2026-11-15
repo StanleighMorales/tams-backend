@@ -181,7 +181,10 @@ static class AssetEndpoints
 
         AssetAudit.Add(db, http, "ASSET_UPDATED", "asset", asset.Id, before, AssetDto.From(asset));
         if (await TrySave(db, ct) is { } conflict) return conflict;
-        return Results.Ok(AssetDto.From(asset));
+        var dto = AssetDto.From(asset);
+        return Results.Ok(v.Condition == AssetCondition.Damaged
+            ? dto with { LastBorrower = await Loans.DamageEndpoints.LastBorrowerAsync(db, asset.Id, ct) }
+            : dto);
     }
 
     static async Task<IResult> Delete(Guid id, TamsDbContext db, HttpContext http, CancellationToken ct)

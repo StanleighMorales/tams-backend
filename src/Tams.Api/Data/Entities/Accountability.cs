@@ -76,6 +76,7 @@ public class Liability
     public Guid LoanId { get; set; }
     public Guid AssetId { get; set; }
     [Column(TypeName = "numeric(12,2)")] public decimal Amount { get; set; }
+    public LiabilityReason Reason { get; set; } = LiabilityReason.Missing;
     public LiabilityStatus Status { get; set; } = LiabilityStatus.Outstanding;
     [MaxLength(40)] public string? ReceiptNo { get; set; }
     public Guid? SettledByUserId { get; set; }
