@@ -107,6 +107,18 @@ carries `item` (`assetCode`, `name`, `condition` GOOD, FAIR or DAMAGED) and the 
 DAMAGED item is refused in checkout (`failureCode: ASSET_DAMAGED`, LCD "Item damaged / See lab staff") and in
 event batch (same text, the batch carries on); returning a damaged item is still allowed.
 
+**Several items per checkout and return (TAMS-121).** The setting `max_items_per_transaction` (1 to 10, default 1;
+ADMIN or TECH_STAFF can change it) is how many items one student takes in one checkout. The limit that applies is the smaller of
+it and what is left of `max_active_loans_per_student`. At 1 nothing changes: the first tap goes to the photo. Above 1, after the
+fingerprint the LCD says "Up to N items" and each tap adds the item ("Added LP-014 / Laptop - GOOD / 1 of 3   X=undo /
+Scan item or OK"); `POST .../confirm` (OK) ends the item step and the kiosk goes to the photo, reaching the limit does the same, and
+`POST .../cancel` (X) takes the last item back out (with none left it cancels the checkout). A refused tap (damaged, unknown, not
+available, `Already added`) shows the reason and the checkout carries on once there is at least one item; with none it is a denial.
+The session view has `items` (`assetCode`, `name`, `condition`). The approval request (`approval.requested`, `GET /approvals/pending`,
+the FCM payload) has `items` too, with `asset` still holding the first item. The student's Confirm creates one loan per item with the
+same room, class length, due time and approval. A RETURN session keeps taking items when the setting is above 1 and OK is Done.
+A multi-item transaction gets one Late Arrival Warning and one Non-Compliance Mark, not one per item.
+
 In event batch, **Cancel undoes the last item lent** (the loan is voided, the item goes back to `IN_STORAGE`, LCD "Removed LP-014");
 with nothing left to undo it ends the session. Staff void an unopened event loan from the web with
 `POST /api/loans/{id}/void` `{"reason":"..."}` (ADMIN, TECH_STAFF). Only an event loan that is still `ACTIVE` and has not reached

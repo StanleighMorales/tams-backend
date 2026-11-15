@@ -11,7 +11,8 @@ public sealed record SettingDefinition(
     string Source,
     int? Min = null,
     int? Max = null,
-    int[]? AllowedValues = null)
+    int[]? AllowedValues = null,
+    bool TechStaffCanEdit = false)
 {
     public string? Validate(int value)
     {
@@ -40,6 +41,7 @@ public static class SettingDefinitions
         new("late_arrival_warning_limit", 3, "Late Arrival Warnings allowed per student; the next one triggers a mark and an instructor freeze.", "PRD 4.1, D6", Min: 0, Max: 10),
         new("enrollment_session_timeout_seconds", 120, "Seconds an enrollment session stays open at each step (fingerprint capture, then confirm) before it expires.", "PRD FR-9.4", Min: 15, Max: 3600),
         new("max_active_loans_per_student", 1, "Open loans a student may hold at once; the next checkout is refused at the fingerprint step.", "PRD FR-1.9", Min: 1, Max: 10),
+        new("max_items_per_transaction", 1, "Items a student may take in one checkout, and return in one return. 1 keeps the PRD flow (one item per checkout); above 1 the kiosk waits for more taps. The smaller of this and what is left of max_active_loans_per_student applies.", "PRD FR-1.9 (gap S1)", Min: 1, Max: 10, TechStaffCanEdit: true),
         new("marks_before_block", 2, "Non-Compliance Marks after which a student is blocked from borrowing.", "PRD 4.1, FR-6.4", Min: 1, Max: 10),
     ];
 

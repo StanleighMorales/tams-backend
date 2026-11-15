@@ -8,6 +8,7 @@ using Tams.Api.Enrollment;
 using Tams.Api.Facilities;
 using Tams.Api.Live;
 using Tams.Api.Loans;
+using Tams.Api.Settings;
 using static Tams.Api.Enrollment.EnrollmentSessions;
 
 namespace Tams.Api.Kiosk;
@@ -37,19 +38,21 @@ static class KioskSessions
     public static async Task EndAsync(TamsDbContext db, CheckoutSession s, SessionStatus status, string? failureCode,
         string[] lcd, Outbox outbox, DateTimeOffset now, CancellationToken ct)
     {
-        // Only a session past the tag step holds its item; a refused tap records asset_id without holding it.
-        var holdsAsset = s.Status is SessionStatus.AwaitingPhoto or SessionStatus.AwaitingApproval or SessionStatus.AwaitingConfirm;
         s.Status = status;
         s.FailureCode = failureCode;
         s.CompletedAt = now;
         s.LcdLines = LcdJson.Write(lcd);
 
-        if (holdsAsset && status != SessionStatus.Completed && s.Type == SessionType.Checkout && s.AssetId is Guid assetId)
+        // Items collected for a checkout go back to storage unless the loans were created (TAMS-121).
+        if (status != SessionStatus.Completed && s.Type == SessionType.Checkout)
         {
-            var released = await db.Assets.Where(a => a.Id == assetId && a.Status == AssetStatus.AtCounter)
-                .ExecuteUpdateAsync(u => u.SetProperty(a => a.Status, AssetStatus.InStorage).SetProperty(a => a.UpdatedAt, now), ct);
-            if (released > 0)
+            var held = await (from i in db.CheckoutSessionItems where i.SessionId == s.Id
+                              join a in db.Assets on i.AssetId equals a.Id where a.Status == AssetStatus.AtCounter select a.Id).ToListAsync(ct);
+            foreach (var assetId in held)
+            {
+                await db.Assets.Where(a => a.Id == assetId).ExecuteUpdateAsync(u => u.SetProperty(a => a.Status, AssetStatus.InStorage).SetProperty(a => a.UpdatedAt, now), ct);
                 outbox.Staff("asset.statusChanged", LoanRules.StatusChanged(assetId, AssetStatus.AtCounter, AssetStatus.InStorage, null));
+            }
         }
 
         var pending = await db.Approvals.FirstOrDefaultAsync(a => a.SessionId == s.Id && a.Decision == ApprovalDecision.Pending, ct);
@@ -91,7 +94,30 @@ static class KioskSessions
         return a is null ? null : new { a.AssetCode, a.Name, condition = EnumText.ToApi(a.Condition) };
     }
 
-    public static object View(CheckoutSession s, DateTimeOffset now, int pollSeconds, object? item = null)
+    /// <summary>The items a checkout session has collected, in tap order (E8). Null for other session types.</summary>
+    public static async Task<object?> ItemsAsync(TamsDbContext db, CheckoutSession s, CancellationToken ct)
+    {
+        if (s.Type != SessionType.Checkout) return null;
+        var rows = await (from i in db.CheckoutSessionItems.AsNoTracking() where i.SessionId == s.Id
+                          join a in db.Assets.AsNoTracking() on i.AssetId equals a.Id orderby i.CreatedAt
+                          select new { a.AssetCode, a.Name, a.Condition }).ToListAsync(ct);
+        return rows.Select(a => new { a.AssetCode, a.Name, condition = EnumText.ToApi(a.Condition) }).ToList();
+    }
+
+    /// <summary>
+    /// E8: how many items this student may take in one checkout. The smaller of max_items_per_transaction and what is left of
+    /// max_active_loans_per_student (FR-1.9); ByLoanCap says the loan cap is the one that binds.
+    /// </summary>
+    public static async Task<(int Limit, bool ByLoanCap)> LimitAsync(TamsDbContext db, ISettings settings, Guid studentId, CancellationToken ct)
+    {
+        var perTransaction = await settings.GetIntAsync(SettingKeys.MaxItems, ct);
+        var cap = await settings.GetIntAsync(SettingKeys.MaxActiveLoans, ct);
+        var active = await db.Loans.CountAsync(l => l.StudentId == studentId && (l.Status == LoanStatus.Active || l.Status == LoanStatus.Overdue), ct);
+        var left = Math.Max(0, cap - active);
+        return (Math.Min(perTransaction, left), left < perTransaction);
+    }
+
+    public static object View(CheckoutSession s, DateTimeOffset now, int pollSeconds, object? item = null, object? items = null)
     {
         var lines = LcdJson.Read(s);
         if (s.Status == SessionStatus.AwaitingApproval)
@@ -100,7 +126,7 @@ static class KioskSessions
         {
             sessionId = s.Id, type = Support.Label(s.Type), status = Support.Label(s.Status), nextStep = NextStep(s.Status),
             lcdLines = lines, finished = !IsOpen(s.Status), failureCode = s.FailureCode, s.ExpiresAt,
-            pollIntervalSeconds = pollSeconds, item,
+            pollIntervalSeconds = pollSeconds, item, items,
         };
     }
 
@@ -137,6 +163,13 @@ static class KioskSessions
         return $"{(a.Name.Length > room ? a.Name[..room] : a.Name)} - {cond}";
     }
 
+    /// <summary>"3 items: LP-014 +2" for the confirm screen of a multi-item checkout.</summary>
+    public static string Several(IReadOnlyList<Asset> a)
+    {
+        var line = $"{a.Count} items: {a[0].AssetCode} +{a.Count - 1}";
+        return line.Length <= 20 ? line : $"{a.Count} items +{a.Count - 1} more";
+    }
+
     public static string Reason(string code) => code switch
     {
         "CARD_UNKNOWN" => "Card not recognized",
@@ -154,6 +187,7 @@ static class KioskSessions
         "ASSET_NOT_BORROWABLE" => "Item not borrowable",
         "ASSET_NOT_AVAILABLE" => "Item not available",
         "ASSET_DAMAGED" => "Item damaged",
+        "ALREADY_ADDED" => "Already added",
         "PHOTO_FAILED" => "Camera error",
         "APPROVAL_DECLINED" => "Declined by instr.",
         "APPROVAL_TIMEOUT" => "No approval in time",

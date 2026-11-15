@@ -797,6 +797,41 @@ namespace Tams.Api.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Tams.Api.Data.Entities.CheckoutSessionItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<Guid>("AssetId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("asset_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<Guid>("SessionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("session_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_checkout_session_items");
+
+                    b.HasIndex("AssetId")
+                        .HasDatabaseName("ix_checkout_session_items_asset_id");
+
+                    b.HasIndex("SessionId", "AssetId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_checkout_session_items_session_id_asset_id_uq");
+
+                    b.ToTable("checkout_session_items");
+                });
+
             modelBuilder.Entity("Tams.Api.Data.Entities.DeviceToken", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2469,6 +2504,23 @@ namespace Tams.Api.Data.Migrations
                         .HasForeignKey("StudentId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_checkout_sessions_student_id");
+                });
+
+            modelBuilder.Entity("Tams.Api.Data.Entities.CheckoutSessionItem", b =>
+                {
+                    b.HasOne("Tams.Api.Data.Entities.Asset", null)
+                        .WithMany()
+                        .HasForeignKey("AssetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_checkout_session_items_asset_id");
+
+                    b.HasOne("Tams.Api.Data.Entities.CheckoutSession", null)
+                        .WithMany()
+                        .HasForeignKey("SessionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_checkout_session_items_session_id");
                 });
 
             modelBuilder.Entity("Tams.Api.Data.Entities.DeviceToken", b =>

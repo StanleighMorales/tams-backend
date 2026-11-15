@@ -53,6 +53,12 @@ in event batch the same text shows and the batch carries on. Every kiosk respons
 `name`, `condition`), and the LCD's second line is "name - CONDITION". The simulator draws `lcdLines` as sent, so no panel change is
 needed; to try it, set an asset's condition to `DAMAGED` as admin (`PUT /assets/{id}`) and tap its tag.
 
+**Several items (TAMS-121).** The simulator draws `lcdLines` as sent, so the new screens appear on the kiosk panel, but its scenarios and
+the OK/X buttons assume one item per checkout. To try it, set `max_items_per_transaction` (and `max_active_loans_per_student`) to 3 as
+admin (or TECH_STAFF), tap the card and finger, tap two or more tags (each answers "Added ..." and waits), press OK to continue to the
+photo, approve on the phone panel (the request lists every item), then OK on the kiosk. RETURN also keeps taking tags until OK. Put both
+settings back to 1 afterwards or the one-item scenarios will wait for OK.
+
 In the event batch scenario, **X / Cancel undoes the last item lent** (TAMS-120): the loan is voided (status `CANCELLED`), the item is back
 in storage and the LCD reads "Removed <code>"; with no items left, X ends the session as before. Staff can void an unopened event loan with
 `POST /loans/{id}/void` `{"reason":"..."}`; the loan detail shows a `VOIDED` ledger row.

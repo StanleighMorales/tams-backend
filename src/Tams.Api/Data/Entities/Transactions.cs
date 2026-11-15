@@ -28,6 +28,16 @@ public class CheckoutSession
     public DateTimeOffset? CompletedAt { get; set; }
 }
 
+/// <summary>An item a checkout session has collected so far (TAMS-121). Held AT_COUNTER until the loans are created or the session ends; deleted when undone.</summary>
+[Table("checkout_session_items")]
+public class CheckoutSessionItem
+{
+    public Guid Id { get; set; }
+    public Guid SessionId { get; set; }
+    public Guid AssetId { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
 [Table("approvals")]
 public class Approval
 {

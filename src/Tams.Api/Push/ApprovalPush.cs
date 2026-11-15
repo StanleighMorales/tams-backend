@@ -6,7 +6,7 @@ namespace Tams.Api.Push;
 public sealed record ApprovalPush(
     Guid UserId, Guid SessionId, string StudentName, string PhotoUrl, string AssetCode, string AssetName,
     JsonElement RoomOptions, double[] ClassLengthHours, int[] ClassLengthMinutes, DateTimeOffset ExpiresAt,
-    int DeadlineSeconds, JsonElement Request)
+    int DeadlineSeconds, JsonElement Request, int ItemCount = 1)
 {
     public const string Type = "approval.requested";
 
@@ -24,17 +24,20 @@ public sealed record ApprovalPush(
             p.GetProperty("asset").GetProperty("assetCode").GetString() ?? "",
             p.GetProperty("asset").GetProperty("name").GetString() ?? "",
             p.GetProperty("roomOptions").Clone(), minutes.Select(m => m / 60.0).ToArray(), minutes,
-            expires, (int)Math.Round((expires - requested).TotalSeconds), p.Clone());
+            expires, (int)Math.Round((expires - requested).TotalSeconds), p.Clone(),
+            p.TryGetProperty("items", out var items) ? Math.Max(1, items.GetArrayLength()) : 1);
     }
 
     public string Title => "Approval request";
-    public string Body => $"{StudentName} wants to borrow {AssetName} ({AssetCode})";
+    public string Body => ItemCount > 1
+        ? $"{StudentName} wants to borrow {ItemCount} items ({AssetName} ({AssetCode}) and {ItemCount - 1} more)"
+        : $"{StudentName} wants to borrow {AssetName} ({AssetCode})";
 
     /// <summary>The full message as JSON: the shape the Development fake emits and the FCM "payload" data field carries.</summary>
     public object ToMessage() => new
     {
         type = Type, sessionId = SessionId, studentName = StudentName, photoUrl = PhotoUrl,
-        asset = new { assetCode = AssetCode, name = AssetName },
+        asset = new { assetCode = AssetCode, name = AssetName }, itemCount = ItemCount,
         roomOptions = RoomOptions, classLengthOptionsHours = ClassLengthHours, classLengthOptionsMinutes = ClassLengthMinutes,
         expiresAt = ExpiresAt, deadlineSeconds = DeadlineSeconds, request = Request,
     };

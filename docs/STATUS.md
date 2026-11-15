@@ -71,6 +71,17 @@ Jira (project TAMS): TAMS-19 and TAMS-21 are in Deep Review and assumed approved
 - Student loans cannot be voided; E8 (TAMS-121) reuses the same rule for items not yet loaned.
 - Open question for the web team: a "remove item" button on event loan detail calling the new endpoint.
 
+### Several items per checkout and return (TAMS-121)
+
+- Setting `max_items_per_transaction` (default 1, range 1 to 10, `SettingDefinition.TechStaffCanEdit`). TECH_STAFF may now call `PUT /settings` and `PUT /settings/{key}` for that key only; any other key from TECH_STAFF is 403 `SETTING_ADMIN_ONLY` (a mixed bulk body is refused whole). `GET /settings` shows `techStaffCanEdit`.
+- New table `checkout_session_items` (migration `20261116101000_CheckoutSessionItems`): the items a checkout session holds `AT_COUNTER`. `checkout_sessions.asset_id` still means the last tapped item. Ending a session without loans (fail, decline, cancel, expiry) releases every held item.
+- Effective limit = min(`max_items_per_transaction`, what is left of `max_active_loans_per_student`). At 1 the flow is the PRD one (first tap goes to the photo, no new LCD text). Above 1: OK (`confirm`) ends the item step, reaching the limit does it automatically, Cancel undoes the last item, a refused tap carries on once an item exists (own checks per item, a repeated tag is `Already added`), and a refusal with no item yet denies the borrow. LCD text is the table in `docs/PRD-GAP-LOG.md` (branch `docs/prd-gaps-and-flow`).
+- Views: `items` on every kiosk session view; `items` on the approval request, `GET /approvals/pending` and the FCM `request` (with `asset` = first item, and `itemCount` on the push message). The confirm screen reads "3 items: LP-014 +2" (cut to "3 items +2 more" when the codes are long).
+- Student Confirm creates one loan per item (own loan number, ledger row and room check-in) sharing room, class length, due time and approval. Loan numbers are allocated one save at a time.
+- RETURN with the setting above 1 keeps the session open after each tap ("Returned LP-014 / 1 returned / Tap next item / OK when done"); OK is Done. A refused tap after the first return carries on. If the student never presses OK the session expires, but the returns already stand.
+- Penalties per transaction (S1-D1): a late-arrival warning is skipped when another loan of the same session already has one, and the overdue mark likewise. Each item still gets its own anomaly, hold and instructor freeze (holds are per loan); the warning and mark do not list the other items.
+- Decisions I made: undo before the loans exist removes the item from the session (no loan to void); the penalty dedupe keys on the shared `session_id` of the loans.
+
 ### Approval push (TAMS-62)
 
 - Right after the photo commits (session enters `AWAITING_APPROVAL`), `ApprovalPushDispatcher` sends the PRD 6.4 `approval.requested` payload to the card owner's registered devices, in the background. Failures are logged and never reach the kiosk. Tokens FCM reports as unregistered are deleted from `device_tokens`.

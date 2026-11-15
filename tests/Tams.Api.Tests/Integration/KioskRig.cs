@@ -77,6 +77,9 @@ public sealed class KioskRig
     public Task<JsonElement> Tap(Guid session, string rfidTag) =>
         Kiosk(HttpMethod.Post, $"sessions/{session}/asset", $$"""{"tagUid":"{{rfidTag}}"}""");
 
+    public Task<HttpResponseMessage> TapRaw(Guid session, string rfidTag) =>
+        Api.NoAuth().SendAsync(HttpMethod.Post, $"/api/kiosk/sessions/{session}/asset", $$"""{"tagUid":"{{rfidTag}}"}""", ("X-Station-Code", StationCode));
+
     public Task<JsonElement> Confirm(Guid session) => Kiosk(HttpMethod.Post, $"sessions/{session}/confirm");
     public Task<JsonElement> Cancel(Guid session) => Kiosk(HttpMethod.Post, $"sessions/{session}/cancel");
     public Task<JsonElement> Poll(Guid session) => Kiosk(HttpMethod.Get, $"sessions/{session}");
@@ -102,6 +105,33 @@ public sealed class KioskRig
 
     public async Task<string> AssetStatus(Guid assetId) =>
         (await Admin.GetAsync($"/api/assets/{assetId}").Ok()).GetProperty("status").GetString()!;
+
+    /// <summary>The whole checkout for the given tags: tap the items, photo, approval, confirm. Returns the session id.</summary>
+    public async Task<Guid> Checkout(params string[] rfidTags)
+    {
+        var id = SessionId(await Start("CHECKOUT"));
+        await Fingerprint(id);
+        foreach (var tag in rfidTags) await Tap(id, tag);
+        if (Status(await Poll(id)) == "AWAITING_ASSET") await Confirm(id); // several items: OK ends the item step
+        await Photo(id);
+        await Approve(id);
+        var done = await Confirm(id);
+        Assert.Equal("COMPLETED", Status(done));
+        return id;
+    }
+
+    /// <summary>Sets settings for one test and puts the defaults back afterwards (settings are global).</summary>
+    public async Task<IAsyncDisposable> Settings(int maxItems, int maxActive)
+    {
+        await Admin.PutRawAsync("/api/settings", $$"""{"max_items_per_transaction":{{maxItems}},"max_active_loans_per_student":{{maxActive}}}""").Expect(200);
+        return new Restore(Admin);
+    }
+
+    sealed class Restore(ApiClient admin) : IAsyncDisposable
+    {
+        public async ValueTask DisposeAsync() =>
+            await admin.PutRawAsync("/api/settings", """{"max_items_per_transaction":1,"max_active_loans_per_student":1}""").Expect(200);
+    }
 
     /// <summary>The newest loan row of an asset, as the loans list returns it.</summary>
     public async Task<JsonElement> LoanOf(Guid assetId) =>
