@@ -32,6 +32,7 @@ Roles: A = ADMIN, T = TECH_STAFF, C = CUSTODIAN, I = INSTRUCTOR. Routes omit the
 | `GET /approvals/{sessionId}/photo` | x | x | x | x | the session's card owner, or ADMIN, TECH_STAFF, CUSTODIAN |
 | `GET /loans`, `GET /loans/{id}`, `GET /loans/{id}/photo`, `GET /anomalies` | x | x | x | x | INSTRUCTOR rows scoped to loans they approved or coordinate (FR-2.5) |
 | `POST /loans/{id}/mark-missing`, `PUT /loans/{id}/room`, `POST /loans/{id}/return`, `POST /anomalies/{id}/acknowledge`, `/resolve` | x | x | | | ADMIN, TECH_STAFF |
+| `PUT /loans/{id}/borrower`, `PUT /events/{id}/borrower`, `GET /borrowers/check` | x | x | | | ADMIN, TECH_STAFF. Event loan borrower record; a flagged borrower needs a written `overrideReason` (audit log) |
 | `GET /dashboard/summary`, `GET /rooms/{id}/occupancy`, `GET /assets/{id}/history` | x | x | x | | ADMIN, TECH_STAFF, CUSTODIAN |
 | `GET /violations`, `GET /students/{id}/standing`, `POST /warnings/{id}/clear`, `/marks/{id}/clear`, `/holds/{id}/lift`, `/freezes/{id}/lift`, `/liabilities/{id}/settle` | x | x | | | ADMIN, TECH_STAFF ("only technical personnel can clear them") |
 | `POST /warnings/reset-term` | x | | | | ADMIN only (FR-6.9 "admin action") |

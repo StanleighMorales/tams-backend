@@ -190,6 +190,7 @@ public static class LoanEndpoints
             destinationRoom = l.DestinationRoomId is Guid rid && rooms.TryGetValue(rid, out var r) ? r : null,
             l.CheckedOutAt, l.TransitDeadlineAt, l.VerifiedAt, l.ClassLengthMinutes, l.ClassEndsAt, l.GraceMinutes, l.DueAt,
             l.OverdueAt, l.MissingAt, l.ReturnedAt,
+            borrower = l.BorrowerName is null ? null : new { name = l.BorrowerName, idNo = l.BorrowerIdNo, studentId = l.BorrowerStudentId },
             returnedBy = l.ReturnedByStudentId is Guid rb && students.TryGetValue(rb, out var s2) ? s2 : null,
             photoUrl = l.PhotoFileId is null ? null : $"/api/loans/{l.Id}/photo",
             lateArrivalWarningNo = warnings.TryGetValue(l.Id, out var w) ? w : (short?)null,

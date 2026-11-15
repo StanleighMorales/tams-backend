@@ -236,13 +236,14 @@ static class LoanRules
         asset.UpdatedAt = now;
 
         ApprovalFreeze? freeze = null;
-        if (loan.StudentId is Guid sid)
+        // Event loans: a borrower linked to a roster student gets the student ladder; the coordinator is frozen.
+        if ((loan.StudentId ?? loan.BorrowerStudentId) is Guid sid)
         {
             if (!await db.NonComplianceMarks.AnyAsync(m => m.LoanId == loan.Id && m.Reason == PenaltyReason.Overdue, ct))
                 AddMark(db, sid, loan.Id, PenaltyReason.Overdue, now);
             await EnsureHoldAsync(db, sid, loan.Id, now, ct);
         }
-        if (loan.ApprovedByUserId is Guid approver && !await db.ApprovalFreezes.AnyAsync(f =>
+        if (Accountable(loan) is Guid approver && !await db.ApprovalFreezes.AnyAsync(f =>
                 f.LoanId == loan.Id && f.Reason == PenaltyReason.Overdue && f.Status == PenaltyStatus.Active, ct))
             freeze = AddFreeze(db, approver, loan.Id, PenaltyReason.Overdue, now);
         Ledger(db, LedgerEvent.Overdue, loan, now, details: new { loan.DueAt });
@@ -255,7 +256,7 @@ static class LoanRules
             loan, new { loan.LoanNo, who.StudentName, who.SectionCode, who.AssetCode, loan.DueAt }, now);
 
         await db.SaveChangesAsync(ct);
-        if (loan.StudentId is Guid student) await RecomputeStandingAsync(db, settings, student, ct);
+        if ((loan.StudentId ?? loan.BorrowerStudentId) is Guid student) await RecomputeStandingAsync(db, settings, student, ct);
         await tx.CommitAsync(ct);
         db.ChangeTracker.Clear();
 
@@ -289,22 +290,24 @@ static class LoanRules
         asset.UpdatedAt = now;
 
         ApprovalFreeze? freeze = null;
-        // liabilities.student_id is required, so EVENT loans (no student) get none; staff settle those offline.
-        if (loan.StudentId is Guid sid)
+        // Who owes: the student (or the student linked as event borrower), else the typed event borrower,
+        // else the event coordinator (PRD-GAPS Q1). Only a student gets the hold.
+        var sid = loan.StudentId ?? loan.BorrowerStudentId;
+        if (!await db.Liabilities.AnyAsync(x => x.LoanId == loan.Id, ct))
         {
-            if (!await db.Liabilities.AnyAsync(x => x.LoanId == loan.Id, ct))
+            var liability = new Liability
             {
-                var liability = new Liability
-                {
-                    Id = Guid.NewGuid(), StudentId = sid, LoanId = loan.Id, AssetId = asset.Id,
-                    Amount = amount ?? asset.ReplacementCost, Notes = note,
-                };
-                db.Liabilities.Add(liability);
-                Audit(db, "LIABILITY_CREATED", "liability", liability.Id, new { loanId = loan.Id, studentId = sid, liability.Amount }, actor, ip: ip);
-            }
-            await EnsureHoldAsync(db, sid, loan.Id, now, ct);
+                Id = Guid.NewGuid(), LoanId = loan.Id, AssetId = asset.Id, Amount = amount ?? asset.ReplacementCost, Notes = note,
+                StudentId = sid,
+                LiableName = sid is null ? loan.BorrowerName : null,
+                LiableUserId = sid is null && loan.BorrowerName is null ? loan.CoordinatorUserId : null,
+            };
+            db.Liabilities.Add(liability);
+            Audit(db, "LIABILITY_CREATED", "liability", liability.Id,
+                new { loanId = loan.Id, liability.StudentId, liability.LiableName, liability.LiableUserId, liability.Amount }, actor, ip: ip);
         }
-        if (loan.ApprovedByUserId is Guid approver
+        if (sid is Guid holder) await EnsureHoldAsync(db, holder, loan.Id, now, ct);
+        if (Accountable(loan) is Guid approver
             && !await db.ApprovalFreezes.AnyAsync(f => f.LoanId == loan.Id && f.Status == PenaltyStatus.Active, ct))
             freeze = AddFreeze(db, approver, loan.Id, PenaltyReason.Missing, now);
         Ledger(db, LedgerEvent.MarkedMissing, loan, now, actor: actor, details: new { amount = amount ?? asset.ReplacementCost, note });
@@ -316,7 +319,7 @@ static class LoanRules
             $"{(who.StudentName is null ? "" : $"{who.StudentName} ({who.SectionCode}): ")}{who.AssetCode} {who.AssetName} was declared missing by staff.",
             loan, new { loan.LoanNo, who.StudentName, who.SectionCode, who.AssetCode }, now);
         await db.SaveChangesAsync(ct);
-        if (loan.StudentId is Guid student) await RecomputeStandingAsync(db, settings, student, ct);
+        if (sid is Guid student) await RecomputeStandingAsync(db, settings, student, ct);
 
         if (freeze is not null) outbox.User(freeze.InstructorUserId, "instructor.frozen", FreezeEvent(freeze, loan, who));
         outbox.Staff("asset.statusChanged", StatusChanged(asset.Id, from, AssetStatus.Missing, asset.CurrentRoomId));
@@ -378,6 +381,9 @@ static class LoanRules
         db.ProfileHolds.Add(h);
         Audit(db, "HOLD_PLACED", "profile_hold", h.Id, new { studentId, loanId });
     }
+
+    /// <summary>The account that answers for a loan: the approving instructor, or the coordinator of an event loan.</summary>
+    static Guid? Accountable(Loan loan) => loan.ApprovedByUserId ?? loan.CoordinatorUserId;
 
     public static Task<bool> IsFrozenAsync(TamsDbContext db, Guid instructorId, CancellationToken ct) =>
         db.ApprovalFreezes.AnyAsync(f => f.InstructorUserId == instructorId && f.Status == PenaltyStatus.Active, ct);
