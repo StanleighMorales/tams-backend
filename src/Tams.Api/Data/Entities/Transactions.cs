@@ -59,6 +59,8 @@ public class Loan
     public Guid? DestinationRoomId { get; set; }
     // PRD: not null for STANDARD loans. Nullable in the schema; the checkout flow enforces it.
     public Guid? PhotoFileId { get; set; }
+    // Set when the retention purge deleted the photo (TAMS-131); satisfies ck_loans_standard_photo.
+    public DateTimeOffset? PhotoPurgedAt { get; set; }
     public LoanStatus Status { get; set; }
     public CustodyState CustodyState { get; set; }
     public DateTimeOffset CheckedOutAt { get; set; }

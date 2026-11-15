@@ -48,6 +48,8 @@ static class SettingKeys
     public const string WarningLimit = "late_arrival_warning_limit";
     public const string MarksBeforeBlock = "marks_before_block";
     public const string MaxActiveLoans = "max_active_loans_per_student";
+    public const string KioskSessionRetentionDays = "kiosk_session_retention_days";
+    public const string NotificationRetentionDays = "notification_retention_days";
 }
 
 /// <summary>

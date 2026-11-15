@@ -40,6 +40,8 @@ public static class SettingDefinitions
         new("late_arrival_warning_limit", 3, "Late Arrival Warnings allowed per student; the next one triggers a mark and an instructor freeze.", "PRD 4.1, D6", Min: 0, Max: 10),
         new("enrollment_session_timeout_seconds", 120, "Seconds an enrollment session stays open at each step (fingerprint capture, then confirm) before it expires.", "PRD FR-9.4", Min: 15, Max: 3600),
         new("max_active_loans_per_student", 1, "Open loans a student may hold at once; the next checkout is refused at the fingerprint step.", "PRD FR-1.9", Min: 1, Max: 10),
+        new("kiosk_session_retention_days", 30, "Days a failed, declined, cancelled or expired kiosk session (with no loan, approval or photo) is kept before the daily clean-up deletes it.", "PRD gap G5", Min: 7, Max: 365),
+        new("notification_retention_days", 90, "Days a read notification is kept before the daily clean-up deletes it.", "PRD gap G5", Min: 7, Max: 730),
         new("marks_before_block", 2, "Non-Compliance Marks after which a student is blocked from borrowing.", "PRD 4.1, FR-6.4", Min: 1, Max: 10),
     ];
 

@@ -82,6 +82,11 @@ Jira (project TAMS): TAMS-19 and TAMS-21 are in Deep Review and assumed approved
 - TAMS-32's Jira description is a copy of the assets ticket and should be corrected. TAMS-31, 33, 39, 40, 41, 42 and 44 have no acceptance criteria.
 - TAMS-41 stores a single merged template per capture. The PRD says "scan twice"; confirm the AS608 merges on the sensor.
 
+### Data retention (TAMS-131)
+
+- ADMIN-only `POST /data-retention/purge-biometrics`, `POST /data-retention/purge-checkout-photos` (need `{"confirm":"DELETE"}`), `GET /data-retention/purges/{id}/summary` (printable HTML). Audit entries with counts; ledger, loan and audit rows kept. Migration `20261116700000_RetentionPurge` adds `loans.photo_purged_at`, relaxes `ck_loans_standard_photo` to allow it, and lets the ledger trigger permit only `photo_file_id` to NULL. Daily `RetentionSweeper` plus settings `kiosk_session_retention_days` (30) and `notification_retention_days` (90). Details in `docs/DATA-RETENTION.md`. Tests in `RetentionTests`.
+- **NOT DONE:** the actual end-of-project purge (nothing was run on real data), confirming the 14-day backup expiry in a real bucket, handing the summaries to the school. Decision G5-D1 followed the recommendation (keep photos until the end), not confirmed with the school.
+
 ## Next steps
 
 1. Pick the fingerprint matcher (Open decisions #1) and replace `KioskSessions.MatchAsync`.
