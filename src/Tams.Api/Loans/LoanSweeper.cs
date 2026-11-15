@@ -103,18 +103,14 @@ public sealed class LoanSweeper(IServiceScopeFactory scopes, IHubContext<LiveHub
         }
         if (wentOffline.Count == 0) return;
 
-        // FR-8.3: technical personnel are told when a station that was reporting goes quiet.
-        var techs = await db.Users.AsNoTracking()
-            .Where(u => u.Role == UserRole.TechStaff && u.Status == RecordStatus.Active && u.DeletedAt == null)
-            .Select(u => u.Id).ToListAsync(ct);
+        // FR-8.3, TAMS-124: technical personnel and custodians are told when a station that was reporting goes quiet.
         foreach (var s in wentOffline)
-            foreach (var t in techs)
-                db.Notifications.Add(new Notification
-                {
-                    Id = Guid.NewGuid(), RecipientUserId = t, Type = "STATION_OFFLINE", Title = "Station offline",
-                    Body = $"{s.Name} ({s.StationCode}) has missed its heartbeats since {LocalTime.Clock(s.LastHeartbeatAt!.Value)}.",
-                    Payload = LoanRules.Json(new { stationId = s.Id, s.StationCode }), CreatedAt = now,
-                });
+        {
+            var room = await db.Rooms.AsNoTracking().Where(r => r.Id == s.RoomId).Select(r => new LoanRules.RoomInfo(r.Code, r.Name)).FirstOrDefaultAsync(ct);
+            await LoanRules.NotifyStaffAsync(db, "STATION_OFFLINE", "Station offline",
+                $"{s.Name} ({s.StationCode}) in {room?.Code} has missed its heartbeats since {LocalTime.Clock(s.LastHeartbeatAt!.Value)}.",
+                null, new { stationId = s.Id, s.StationCode, stationName = s.Name, room, lastHeartbeatAt = s.LastHeartbeatAt }, now, ct);
+        }
         await db.SaveChangesAsync(ct);
     }
 
