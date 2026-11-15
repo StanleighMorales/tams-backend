@@ -82,6 +82,12 @@ Jira (project TAMS): TAMS-19 and TAMS-21 are in Deep Review and assumed approved
 - TAMS-32's Jira description is a copy of the assets ticket and should be corrected. TAMS-31, 33, 39, 40, 41, 42 and 44 have no acceptance criteria.
 - TAMS-41 stores a single merged template per capture. The PRD says "scan twice"; confirm the AS608 merges on the sensor.
 
+### Performance scripts (TAMS-132)
+
+- **In the repo:** `tests/perf/` (`seed.py` seeds 2,000 enrolled students, kiosks, items and an instructor card; `kiosk-flow.js` is a k6 load script with the NFR-1 and NFR-2 thresholds; `nfr3_nfr5.py` measures scan-to-SignalR and sweep lateness) and `docs/PERFORMANCE.md`.
+- A smoke run on a developer laptop (loopback, Docker Desktop) is recorded in `docs/PERFORMANCE.md` only to show the scripts work.
+- **NOT DONE:** the NFR-1 to NFR-5 measurement on the target hardware or VPS, through Caddy and over a real network, with the results table filled in; NFR-4 with real-format templates (blocked on G1, the real matcher); coordination with QA (TAMS-83). No NFR is claimed as met.
+
 ## Next steps
 
 1. Pick the fingerprint matcher (Open decisions #1) and replace `KioskSessions.MatchAsync`.
