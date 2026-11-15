@@ -17,10 +17,7 @@
     <PackageReference Include="QRCoder" Version="1.8.1" />
     <PackageReference Include="Scalar.AspNetCore" Version="2.19.0" />
     <InternalsVisibleTo Include="Tams.Api.Tests" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <InternalsVisibleTo Include="Tams.Api.Tests" />
+    <PackageReference Include="SourceAFIS" Version="3.14.0" />
   </ItemGroup>
 
   <!-- Development simulator page (served at /sim in Development only; see docs/SIMULATOR.md). -->

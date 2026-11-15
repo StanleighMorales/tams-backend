@@ -72,7 +72,7 @@ Wi-Fi off stops polling and heartbeats; the staff panel shows the station going 
 |---|---|---|---|
 | Network and heartbeat | ESP32 Wi-Fi and heartbeat task (interval and jitter) | `POST /stations/{code}/heartbeat`, `GET /stations/health` | TAMS-50 (Wi-Fi and HTTP client), TAMS-80 (room station heartbeat) |
 | PN532 reader | card and tag reads | `POST /kiosk/{code}/sessions`, `.../asset` | TAMS-51 (PN532 firmware) |
-| AS608 fingerprint | sensor, noise knob, wrong finger, enrollment | `.../fingerprint`, `POST /enrollment/sessions` | TAMS-52 (capture and upload), TAMS-53 (enrollment mode) |
+| AS608 fingerprint | sensor image (or legacy template), noise knob, wrong finger, enrollment | `.../fingerprint`, `POST /enrollment/sessions` | TAMS-52 (capture and upload), TAMS-53 (enrollment mode) |
 | Counter kiosk (LCD2004, buttons, buzzer, webcam) | 4x20 LCD from `lcdLines`, OK/X, tones per step, camera with retry and fault | `.../photo`, `.../confirm`, `.../cancel`, session polling | TAMS-76 (LCD), TAMS-77 (buttons, buzzer), TAMS-78 (checkout flow, 2 s polling) |
 | Room reader | room tag tap, LED and tone from `signal`; sends the key from the "Room reader X-Station-Key" field | `POST /stations/{code}/scans` | TAMS-80 (room station build), TAMS-111 |
 | Instructor phone | approve or decline, destination room, class length | `/auth/login`, `/approvals/*`, `/hubs/live` | TAMS-35, TAMS-74, TAMS-75 (mobile approvals) |
@@ -111,14 +111,24 @@ with the scenarios.
 - **Station key (TAMS-127):** the room reader and its heartbeats send `X-Station-Key` from the "Room reader X-Station-Key" field (default `demo-room-101-key`, the seeded key of `ROOM-101`; the kiosk sends no key). Clear the field to see the grace period (accepted while `station_key_required` is 0), type a wrong key to see 403 `STATION_NOT_AUTHENTICATED`. To try a real key, rotate it as admin with `POST /api/stations/{id}/rotate-key` and paste the returned `key`.
 - **Latency, packet loss and HTTP timeout** (Network panel) apply to hardware calls only (kiosk, room reader, heartbeats). A dropped or
   timed-out request is logged and the LCD shows "Server timeout" or "No Wi-Fi", so the firmware's retry logic can be designed against it.
-- **AS608 template** is 512 bytes, the size of the sensor's character file (the API accepts 1 to 4096). The noise slider flips random
-  bytes: 0 to about 160 flipped still match at the default `Kiosk:MatchThreshold` of 0.85, 256 does not.
+- **AS608 image (default, TAMS-128)** is what the real kiosk will upload: raw 8-bit grayscale, 256 x 288 = 73,728 bytes, one byte per
+  pixel row by row, base64 in `image` with `width` and `height` (the API accepts 64 to 1024 each, up to 512 KB; PNG or JPEG is not
+  accepted). The page draws a synthetic ridge pattern per student no. and finger index (same recipe as
+  `tests/Tams.Api.Tests/FixtureFingerprints.cs`). The noise slider adds pixel noise (noise / 4, up to 60) and each scan shifts a few
+  pixels, so a rescan is never identical. The API scores it with SourceAFIS; a match needs at least `Kiosk:SourceAfisThreshold`
+  (provisional default 40, not calibrated on real captures). Checked by hand: a clean rescan scores about 56, noise 120 about 46, another
+  student 0. The image is processed in memory and never stored. Expected time on the real sensor is the open item: the kiosk must keep the
+  fingerprint step inside 2 s or report the real figure (NFR-1).
+- **Legacy template** (untick "Send sensor image"): 512 bytes, the sensor's character file size (the API accepts 1 to 4096), matched by
+  Hamming distance at `Kiosk:MatchThreshold` (default 0.85). The noise slider flips random bytes: 0 to about 160 still match, 256 does not.
+  Template rows (`RAW_V1`) and image rows (`SOURCEAFIS_V1`) only match their own kind. To switch a student, delete the finger
+  (`DELETE /students/{id}/fingerprints/{index}`) and enroll again.
 - **Download full log (.json)** saves every non-poll call with its station header, request body and response, to hand to whoever writes
-  the firmware as the traffic the API expects. Passwords and templates are redacted.
+  the firmware as the traffic the API expects. Passwords, templates and images are redacted.
 
 ## Known gaps
 
-- The fingerprint matcher (TAMS-58) scores raw template bytes by Hamming distance and accepts at `Kiosk:MatchThreshold` (default 0.85). The simulator's template bytes are made up, so the noise slider and "wrong finger" only show how the threshold behaves; calibration on real AS608 captures is still to do.
+- The simulator's fingerprint images are synthetic, so the noise slider and "wrong finger" show the pipeline and how the threshold behaves, not real error rates. The SourceAFIS threshold (`Kiosk:SourceAfisThreshold`, default 40) is provisional until real AS608 captures are available (TAMS-52, TAMS-128 phase 1).
 - The AS608 "scan twice" is one submit. FCM push (TAMS-62) is sent by the API when Firebase is configured; the simulator's phone still gets approval requests over SignalR (or polling).
 - Settings in `localStorage` (base URL, codes, knobs, emails). Passwords are not saved.
 - Calling another origin needs that origin in `Cors:Origins`; the default is the Vite port only.

@@ -160,6 +160,7 @@ public class TamsDbContext(DbContextOptions<TamsDbContext> options) : DbContext(
             e.Property(x => x.HasActiveHold).HasDefaultValueSql("false").HasSentinel(false);
         });
         b.Entity<Liability>().Property(x => x.Reason).HasDefaultValueSql("'MISSING'::liability_reason").HasSentinel(LiabilityReason.Missing);
+        b.Entity<FingerprintTemplate>().Property(x => x.TemplateFormat).HasDefaultValueSql("'RAW_V1'");
         b.Entity<Station>().Property(x => x.Health).HasDefaultValueSql("'OFFLINE'::station_health").HasSentinel(StationHealth.Offline);
         b.Entity<Asset>(e =>
         {
