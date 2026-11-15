@@ -146,6 +146,12 @@ Jira (project TAMS): TAMS-19 and TAMS-21 are in Deep Review and assumed approved
 - ADMIN-only `POST /data-retention/purge-biometrics`, `POST /data-retention/purge-checkout-photos` (need `{"confirm":"DELETE"}`), `GET /data-retention/purges/{id}/summary` (printable HTML). Audit entries with counts; ledger, loan and audit rows kept. Migration `20261116700000_RetentionPurge` adds `loans.photo_purged_at`, relaxes `ck_loans_standard_photo` to allow it, and lets the ledger trigger permit only `photo_file_id` to NULL. Daily `RetentionSweeper` plus settings `kiosk_session_retention_days` (30) and `notification_retention_days` (90). Details in `docs/DATA-RETENTION.md`. Tests in `RetentionTests`.
 - **NOT DONE:** the actual end-of-project purge (nothing was run on real data), confirming the 14-day backup expiry in a real bucket, handing the summaries to the school. Decision G5-D1 followed the recommendation (keep photos until the end), not confirmed with the school.
 
+### Performance scripts (TAMS-132)
+
+- **In the repo:** `tests/perf/` (`seed.py` seeds 2,000 enrolled students, kiosks, items and an instructor card; `kiosk-flow.js` is a k6 load script with the NFR-1 and NFR-2 thresholds; `nfr3_nfr5.py` measures scan-to-SignalR and sweep lateness) and `docs/PERFORMANCE.md`.
+- A smoke run on a developer laptop (loopback, Docker Desktop) is recorded in `docs/PERFORMANCE.md` only to show the scripts work.
+- **NOT DONE:** the NFR-1 to NFR-5 measurement on the target hardware or VPS, through Caddy and over a real network, with the results table filled in; NFR-4 with real-format templates (blocked on G1, the real matcher); coordination with QA (TAMS-83). No NFR is claimed as met.
+
 ## Next steps
 
 1. ~~Pick the fingerprint matcher and replace `KioskSessions.MatchAsync`~~ Done in TAMS-128 (SourceAFIS). Still to do: calibrate `Kiosk:SourceAfisThreshold` on real AS608 captures once TAMS-52 delivers them (Open decisions #1).
