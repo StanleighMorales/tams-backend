@@ -62,6 +62,15 @@ Jira (project TAMS): TAMS-19 and TAMS-21 are in Deep Review and assumed approved
 - Every kiosk response after a tag tap carries `item` (`assetCode`, `name`, `condition`) and the second LCD line is "name - CONDITION". `checkout_sessions.asset_id` now records the last tapped item in every session type. Hardware (TAMS-76, 78) needs the new text.
 - Integration tests build a whole kiosk with `KioskRig` (tests/Tams.Api.Tests/Integration).
 
+### Void an event loan (TAMS-120)
+
+- New `loan_status` label `CANCELLED` and `ledger_event` label `VOIDED` (migration `20261116100000_VoidLoans`, which adds the labels with `ALTER TYPE ... ADD VALUE`; EF does not generate that). A voided loan is kept, never deleted.
+- `LoanRules.VoidAsync` is the one void rule: only an EVENT loan that is `ACTIVE`, not verified and in custody `AWAITING_ARRIVAL` or `NOT_REQUIRED`. It sets the loan `CANCELLED`, returns the asset to `IN_STORAGE`, appends a `VOIDED` ledger row and a `LOAN_VOIDED` audit row (actor = the coordinator at the kiosk, or the staff user on the web), and refreshes room occupancy.
+- Kiosk: Cancel in `EVENT_BATCH` voids the session's last active loan and the session continues ("Removed LP-014"); with none left Cancel ends the session. If that loan already reached its venue the LCD says "Cannot undo". Batch counts ignore cancelled loans.
+- Web: `POST /loans/{id}/void` `{reason}` (ADMIN, TECH_STAFF; 400 without a reason, 409 `LOAN_NOT_VOIDABLE`). The event detail `loanCounts` gains `cancelled`; the loans list accepts `status=CANCELLED`.
+- Student loans cannot be voided; E8 (TAMS-121) reuses the same rule for items not yet loaned.
+- Open question for the web team: a "remove item" button on event loan detail calling the new endpoint.
+
 ### Approval push (TAMS-62)
 
 - Right after the photo commits (session enters `AWAITING_APPROVAL`), `ApprovalPushDispatcher` sends the PRD 6.4 `approval.requested` payload to the card owner's registered devices, in the background. Failures are logged and never reach the kiosk. Tokens FCM reports as unregistered are deleted from `device_tokens`.

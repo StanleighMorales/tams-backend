@@ -33,9 +33,9 @@ namespace Tams.Api.Data.Migrations
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "custody_state", new[] { "AWAITING_ARRIVAL", "VERIFIED", "ANOMALY", "NOT_REQUIRED" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "device_platform", new[] { "ANDROID", "IOS", "WEB" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "event_status", new[] { "SCHEDULED", "ACTIVE", "CLOSED", "CANCELLED" });
-            NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "ledger_event", new[] { "CHECKOUT", "ROOM_VERIFIED", "LATE_ARRIVAL_WARNING", "RETURN", "OVERDUE", "MARKED_MISSING", "SETTLED" });
+            NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "ledger_event", new[] { "CHECKOUT", "ROOM_VERIFIED", "LATE_ARRIVAL_WARNING", "RETURN", "OVERDUE", "MARKED_MISSING", "SETTLED", "VOIDED" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "liability_status", new[] { "OUTSTANDING", "SETTLED_PAYMENT", "SETTLED_REPLACEMENT", "WAIVED" });
-            NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "loan_status", new[] { "ACTIVE", "OVERDUE", "RETURNED", "MISSING" });
+            NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "loan_status", new[] { "ACTIVE", "OVERDUE", "RETURNED", "MISSING", "CANCELLED" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "loan_type", new[] { "STANDARD", "EVENT" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "media_kind", new[] { "CHECKOUT_PHOTO", "ASSET_IMAGE", "AUDIT_REPORT", "AUDIT_IMPORT", "QR_SHEET" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "penalty_reason", new[] { "LATE_ARRIVAL_LIMIT", "OVERDUE", "MISSING" });

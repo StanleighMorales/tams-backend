@@ -18,6 +18,7 @@ namespace Tams.Api.Loans;
 public sealed record MarkMissingRequest(decimal? Amount, string? Note);
 public sealed record ChangeRoomRequest(Guid? DestinationRoomId, string? Note);
 public sealed record StaffReturnRequest(string? Note);
+public sealed record VoidLoanRequest(string? Reason);
 public sealed record AnomalyNoteRequest(string? Note);
 
 /// <summary>Loans, anomalies, asset history, room occupancy and the live dashboard (PRD 6.3, F4).</summary>
@@ -36,6 +37,7 @@ public static class LoanEndpoints
         loans.MapPost("{id:guid}/mark-missing", MarkMissing).RequireRoles(Staff);
         loans.MapPut("{id:guid}/room", ChangeRoom).RequireRoles(Staff);
         loans.MapPost("{id:guid}/return", StaffReturn).RequireRoles(Staff);
+        loans.MapPost("{id:guid}/void", Void).RequireRoles(Staff);
 
         var anomalies = app.MapGroup("/anomalies").WithTags("Anomalies");
         anomalies.MapGet("", ListAnomalies).RequireRoles(Readers);
@@ -68,7 +70,7 @@ public static class LoanEndpoints
             if (status.Equals("open", StringComparison.OrdinalIgnoreCase))
                 query = query.Where(l => l.Status == LoanStatus.Active || l.Status == LoanStatus.Overdue);
             else if (Support.TryParse<LoanStatus>(status, out var st)) query = query.Where(l => l.Status == st);
-            else errors["status"] = ["ACTIVE, OVERDUE, RETURNED, MISSING or open."];
+            else errors["status"] = ["ACTIVE, OVERDUE, RETURNED, MISSING, CANCELLED or open."];
         }
         if (type is not null)
         {
@@ -280,6 +282,24 @@ public static class LoanEndpoints
         await tx.CommitAsync(ct);
         await outbox.FlushAsync(hub);
         return Results.Ok(await DetailAsync(db, (await db.Loans.AsNoTracking().FirstAsync(l => l.Id == id, ct)), ct));
+    }
+
+    /// <summary>TAMS-120: staff remove an event loan lent by mistake, while its item has not reached the venue.</summary>
+    static async Task<IResult> Void(Guid id, VoidLoanRequest req, HttpContext http, TamsDbContext db, IHubContext<LiveHub> hub, CancellationToken ct)
+    {
+        var reason = Clean(req.Reason);
+        if (reason is null || reason.Length > 500)
+            return Problems.Validation(new Dictionary<string, string[]> { ["reason"] = ["Required, up to 500 characters."] });
+        var outbox = new Outbox();
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        var loan = await LoanRules.VoidAsync(db, outbox, id, DateTimeOffset.UtcNow, null, AssetAudit.ActorId(http.User), reason, ct);
+        if (loan is null)
+            return await db.Loans.AnyAsync(l => l.Id == id, ct)
+                ? Problems.Conflict("LOAN_NOT_VOIDABLE", "Only an event loan that is still ACTIVE and has not reached its venue can be voided.")
+                : NotFound();
+        await tx.CommitAsync(ct);
+        await outbox.FlushAsync(hub);
+        return Results.Ok(await DetailAsync(db, await db.Loans.AsNoTracking().FirstAsync(l => l.Id == id, ct), ct));
     }
 
     static async Task<IResult> NotOpenAsync(TamsDbContext db, Guid id, CancellationToken ct) =>

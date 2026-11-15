@@ -341,7 +341,7 @@ public static class KioskEndpoints
         Outbox outbox, DateTimeOffset now, CancellationToken ct)
     {
         var evt = await db.Events.AsNoTracking().FirstAsync(e => e.Id == s.EventId, ct);
-        var lent = await db.Loans.CountAsync(l => l.SessionId == s.Id, ct);
+        var lent = await db.Loans.CountAsync(l => l.SessionId == s.Id && l.Status != LoanStatus.Cancelled, ct);
         var refusal = now >= evt.EndsAt || evt.Status is EventStatus.Closed or EventStatus.Cancelled ? "Event has ended"
             : asset is null ? "Unknown item tag"
             : !borrowable ? "Item not borrowable"
@@ -432,7 +432,7 @@ public static class KioskEndpoints
 
         if (s!.Type == SessionType.EventBatch && s.Status == SessionStatus.AwaitingAsset)
         {
-            var lent = await db.Loans.CountAsync(l => l.SessionId == s.Id, ct);
+            var lent = await db.Loans.CountAsync(l => l.SessionId == s.Id && l.Status != LoanStatus.Cancelled, ct);
             var evt = await db.Events.AsNoTracking().FirstAsync(e => e.Id == s.EventId, ct);
             var grace = await settings.GetIntAsync(SettingKeys.Grace, ct);
             await EndAsync(db, s, SessionStatus.Completed, null,
@@ -501,9 +501,35 @@ public static class KioskEndpoints
         if (deny is not null) return deny;
         if (expired) return await FinishAsync(db, tx, outbox, hub, s!, settings, now, ct);
         if (!IsOpen(s!.Status)) return InvalidState(s.Status, "cancel");
-        // Batch-mode loans already made stay open; cancelling just leaves batch mode.
+        // TAMS-120: in batch mode Cancel undoes the last tapped item; only with none left does it leave batch mode.
+        if (s.Type == SessionType.EventBatch && s.Status == SessionStatus.AwaitingAsset)
+        {
+            var last = await db.Loans.AsNoTracking().Where(l => l.SessionId == s.Id && l.Status == LoanStatus.Active)
+                .OrderByDescending(l => l.CheckedOutAt).Select(l => l.Id).FirstOrDefaultAsync(ct);
+            if (last != Guid.Empty)
+            {
+                await UndoLastAsync(db, settings, s, last, outbox, now, ct);
+                return await FinishAsync(db, tx, outbox, hub, s, settings, now, ct);
+            }
+        }
         await EndAsync(db, s, SessionStatus.Cancelled, "CANCELLED", ["Cancelled", "", "", ""], outbox, now, ct);
         return await FinishAsync(db, tx, outbox, hub, s, settings, now, ct);
+    }
+
+    static async Task UndoLastAsync(TamsDbContext db, ISettings settings, CheckoutSession s, Guid loanId, Outbox outbox,
+        DateTimeOffset now, CancellationToken ct)
+    {
+        s.ExpiresAt = now + TimeSpan.FromSeconds(await settings.GetIntAsync(SettingKeys.IdleTimeout, ct));
+        var voided = await LoanRules.VoidAsync(db, outbox, loanId, now, s.StationId, s.InstructorUserId, "Undone at the kiosk", ct);
+        var lent = await db.Loans.CountAsync(l => l.SessionId == s.Id && l.Status != LoanStatus.Cancelled, ct);
+        if (voided is null) // the item already reached the venue: it can no longer be undone here
+        {
+            s.LcdLines = LcdJson.Write("Cannot undo", "Item already in use", $"{lent} borrowed", "OK when done");
+            return;
+        }
+        var asset = await db.Assets.AsNoTracking().FirstAsync(a => a.Id == voided.AssetId, ct);
+        s.AssetId = asset.Id;
+        s.LcdLines = LcdJson.Write($"Removed {asset.AssetCode}", NameAndCondition(asset), $"{lent} borrowed", "OK when done");
     }
 
     // ---------------------------------------------------------------- helpers

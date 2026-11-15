@@ -12,7 +12,7 @@ public enum AssetType { Borrowable, Fixed }
 public enum AssetStatus { InStorage, AtCounter, InTransit, InRoomVerified, LocationAnomaly, Overdue, Missing, Maintenance, Retired }
 public enum AssetCondition { Good, Fair, Damaged }
 public enum LoanType { Standard, Event }
-public enum LoanStatus { Active, Overdue, Returned, Missing }
+public enum LoanStatus { Active, Overdue, Returned, Missing, Cancelled }
 public enum CustodyState { AwaitingArrival, Verified, Anomaly, NotRequired }
 public enum SessionType { Checkout, Return, EventBatch, EventReturn, Enrollment }
 public enum SessionStatus { AwaitingFingerprint, AwaitingAsset, AwaitingPhoto, AwaitingApproval, AwaitingConfirm, Completed, Declined, Cancelled, Expired, Failed }
@@ -29,7 +29,7 @@ public enum EventStatus { Scheduled, Active, Closed, Cancelled }
 public enum AuditSource { Mobile, ExternalImport }
 public enum AuditStatus { InProgress, Completed, SignedOff }
 public enum AuditResult { Matched, Missing, Misplaced, Unknown }
-public enum LedgerEvent { Checkout, RoomVerified, LateArrivalWarning, Return, Overdue, MarkedMissing, Settled }
+public enum LedgerEvent { Checkout, RoomVerified, LateArrivalWarning, Return, Overdue, MarkedMissing, Settled, Voided }
 // PRD 7.3 device_tokens.platform and media_files.kind are enumerated inline, not in 7.2.
 public enum DevicePlatform { Android, Ios, Web }
 public enum MediaKind { CheckoutPhoto, AssetImage, AuditReport, AuditImport, QrSheet }
