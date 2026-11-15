@@ -33,6 +33,7 @@ services:
       Cors__Origins: ${CORS_ORIGINS:-http://localhost:5173}
       # Development only: load the sample data from docs/TEST-DATA.md into an empty database.
       Seed__Demo: ${SEED_DEMO:-false}
+      Backup__StatusPath: /app/backup-status/backup.json
     depends_on:
       db:
         condition: service_healthy
@@ -41,6 +42,8 @@ services:
       - media:/app/media
       # ASP.NET Data Protection key ring (encrypts fingerprint templates). Lose it, lose the templates.
       - dp-keys:/app/keys
+      # Written by the backup service; /health reports a failed or stale backup from it.
+      - backup-status:/app/backup-status:ro
     restart: unless-stopped
 
   proxy:
@@ -58,7 +61,35 @@ services:
       - api
     restart: unless-stopped
 
+  # Nightly encrypted pg_dump (docs/RUNBOOK.md). Only the age PUBLIC key lives here; keep the private key
+  # off the server. Leave AGE_RECIPIENT empty and the job records a failure instead of writing a plain dump.
+  backup:
+    build: ./backup
+    environment:
+      TZ: Asia/Manila
+      POSTGRES_DB: ${POSTGRES_DB:-tams}
+      POSTGRES_USER: ${POSTGRES_USER:-tams}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      AGE_RECIPIENT: ${AGE_RECIPIENT:-}
+      BACKUP_HOUR: ${BACKUP_HOUR:-02}
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+      AWS_DEFAULT_REGION: ${S3_REGION:-auto}
+    volumes:
+      - backups:/backups
+      - dp-keys:/keys
+      - backup-status:/status
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
+  backups:
+  backup-status:
   db-data:
   media:
   dp-keys:
