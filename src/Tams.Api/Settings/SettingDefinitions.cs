@@ -43,6 +43,7 @@ public static class SettingDefinitions
         new("max_active_loans_per_student", 1, "Open loans a student may hold at once; the next checkout is refused at the fingerprint step.", "PRD FR-1.9", Min: 1, Max: 10),
         new("max_items_per_transaction", 1, "Items a student may take in one checkout, and return in one return. 1 keeps the PRD flow (one item per checkout); above 1 the kiosk waits for more taps. The smaller of this and what is left of max_active_loans_per_student applies.", "PRD FR-1.9 (gap S1)", Min: 1, Max: 10, TechStaffCanEdit: true),
         new("marks_before_block", 2, "Non-Compliance Marks after which a student is blocked from borrowing.", "PRD 4.1, FR-6.4", Min: 1, Max: 10),
+        new("station_key_required", 0, "1 = room stations must send a valid X-Station-Key. 0 = grace period: a station without a key (or whose firmware has no key yet) still works; a wrong key is always refused.", "TAMS-127, FR-3.1", Min: 0, Max: 1),
     ];
 
     public static readonly IReadOnlyDictionary<string, SettingDefinition> ByKey =

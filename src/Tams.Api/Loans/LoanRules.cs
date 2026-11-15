@@ -50,6 +50,7 @@ static class SettingKeys
     public const string MarksBeforeBlock = "marks_before_block";
     public const string MaxActiveLoans = "max_active_loans_per_student";
     public const string MaxItems = "max_items_per_transaction";
+    public const string StationKeyRequired = "station_key_required";
 }
 
 /// <summary>

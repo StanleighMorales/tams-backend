@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Tams.Api.Data.Entities;
+using Tams.Api.Enrollment;
 
 namespace Tams.Api.Data;
 
@@ -13,6 +14,9 @@ public static class DevSeed
 {
     /// <summary>Password of every demo account (the admin keeps the Bootstrap password).</summary>
     public const string Password = "Demo#Pass123";
+
+    /// <summary>X-Station-Key of the demo room reader ROOM-101 (the simulator sends it). Demo data only.</summary>
+    public const string DemoRoomKey = "demo-room-101-key";
 
     public static async Task SeedDemoDataAsync(this IServiceProvider services)
     {
@@ -58,7 +62,7 @@ public static class DevSeed
 
         db.Stations.AddRange(
             new Station { Id = Guid.NewGuid(), StationCode = "KIOSK-1", Type = StationType.CounterKiosk, RoomId = store.Id, Name = "Counter Kiosk", CreatedAt = now, UpdatedAt = now },
-            new Station { Id = Guid.NewGuid(), StationCode = "ROOM-101", Type = StationType.RoomStation, RoomId = lab1.Id, Name = "Lab 1 Reader", CreatedAt = now, UpdatedAt = now });
+            new Station { Id = Guid.NewGuid(), StationCode = "ROOM-101", Type = StationType.RoomStation, RoomId = lab1.Id, Name = "Lab 1 Reader", KeyHash = StationAuth.HashKey(DemoRoomKey), CreatedAt = now, UpdatedAt = now });
 
         db.AuthCards.Add(new AuthCard { Id = Guid.NewGuid(), CardUid = "04A1B2C3", UserId = instructor.Id, IssuedAt = now });
 

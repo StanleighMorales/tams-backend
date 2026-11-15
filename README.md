@@ -98,8 +98,12 @@ docs/SIMULATOR.md      interactive kiosk simulator served at /sim in Development
 
 ## Kiosk and stations
 
-Devices hold no credentials (FR-1.4). The counter kiosk sends `X-Station-Code: <station_code>` on
-every call; room stations name themselves in the path. Every kiosk response has the same shape:
+The counter kiosk holds no credentials (FR-1.4); it sends `X-Station-Code: <station_code>` on
+every call. Room stations name themselves in the path and also send their own key in `X-Station-Key` (TAMS-127):
+the key is shown once when the station is created (`POST /api/stations`) or rotated (`POST /api/stations/{id}/rotate-key`), and
+only its hash is stored. A wrong key, or a missing one once the setting `station_key_required` is 1, gets 403
+`STATION_NOT_AUTHENTICATED`. While it is 0 (the default, a grace period) stations that have no key loaded still work; set it to 1 after
+every room station has its key. Every kiosk response has the same shape:
 `sessionId`, `type`, `status`, `nextStep` (`FINGERPRINT`, `ASSET`, `PHOTO`, `WAIT`, `CONFIRM`, `DONE`),
 the 4 `lcdLines` to show, `failureCode` and `pollIntervalSeconds`. A denial is `status: FAILED` with
 the reason already on the LCD lines, not an HTTP error. Once an item tag has been tapped the response also
@@ -134,8 +138,8 @@ its venue can be voided (`LOAN_NOT_VOIDABLE` otherwise). A voided loan stays as 
 | Photo (multipart `file`, JPEG; no file = camera failed) | `POST /api/kiosk/sessions/{id}/photo` |
 | Poll every 2 s while `WAIT` | `GET /api/kiosk/sessions/{id}` |
 | OK / X buttons (OK is also "Done" in batch modes) | `POST /api/kiosk/sessions/{id}/confirm`, `.../cancel` |
-| Room station scan; reply `signal` is `SUCCESS` (green, chime) or `ERROR` (red, low tone) | `POST /api/stations/{code}/scans` `{"tagUid":"..."}` |
-| Heartbeat every 30 to 60 s | `POST /api/stations/{code}/heartbeat` `{"firmwareVersion":"1.0.3","rssi":-61,"uptimeS":1200,"freeHeap":180000}` |
+| Room station scan (header `X-Station-Key`); reply `signal` is `SUCCESS` (green, chime) or `ERROR` (red, low tone) | `POST /api/stations/{code}/scans` `{"tagUid":"..."}` |
+| Heartbeat every 30 to 60 s (room stations send `X-Station-Key`) | `POST /api/stations/{code}/heartbeat` `{"firmwareVersion":"1.0.3","rssi":-61,"uptimeS":1200,"freeHeap":180000}` |
 
 The instructor approves from the phone (`GET /api/approvals/pending`, `POST /api/approvals/{sessionId}/approve`).
 Live events (PRD 6.4) arrive over SignalR at `/hubs/live?access_token=<jwt>`. Background jobs:

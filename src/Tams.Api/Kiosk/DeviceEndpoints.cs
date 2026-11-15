@@ -19,7 +19,7 @@ public sealed record HeartbeatRequest(string? FirmwareVersion, short? Rssi, int?
 
 /// <summary>
 /// F3 room check-in and F8 heartbeats. Device traffic: anonymous to the JWT pipeline, the station is the
-/// one named in the path (StationAuth.IsDeviceAllowed). Allow-listed in Policies.AnonymousRoutes.
+/// one named in the path (StationAuth.IsRoomStationAuthenticated). Allow-listed in Policies.AnonymousRoutes.
 /// </summary>
 public static class DeviceEndpoints
 {
@@ -39,8 +39,8 @@ public static class DeviceEndpoints
         IHubContext<LiveHub> hub, CancellationToken ct)
     {
         var station = await StationAsync(db, code, ct);
-        if (station is null || station.Type != StationType.RoomStation || !StationAuth.IsDeviceAllowed(http, station))
-            return Problems.Forbidden("STATION_NOT_AUTHENTICATED", "Unknown or inactive room station.");
+        if (station is null || station.Type != StationType.RoomStation || !await KeyOkAsync(http, station, settings, ct))
+            return Problems.Forbidden("STATION_NOT_AUTHENTICATED", "Unknown or inactive room station, or a missing or wrong X-Station-Key.");
         if (!RfidUid.TryNormalize(req.TagUid, out var uid))
             return Problems.Validation(new Dictionary<string, string[]> { ["tagUid"] = ["Required: the tag UID in hex."] });
 
@@ -158,8 +158,8 @@ public static class DeviceEndpoints
         IHubContext<LiveHub> hub, CancellationToken ct)
     {
         var station = await db.Stations.FirstOrDefaultAsync(s => s.StationCode == code.Trim().ToUpperInvariant() && s.DeletedAt == null, ct);
-        if (station is null || !StationAuth.IsDeviceAllowed(http, station))
-            return Problems.Forbidden("STATION_NOT_AUTHENTICATED", "Unknown or inactive station.");
+        if (station is null || !await KeyOkAsync(http, station, settings, ct))
+            return Problems.Forbidden("STATION_NOT_AUTHENTICATED", "Unknown or inactive station, or a missing or wrong X-Station-Key.");
         var errors = new Dictionary<string, string[]>();
         if (req.FirmwareVersion is { Length: > 30 }) errors["firmwareVersion"] = ["Up to 30 characters."];
         if (req.UptimeS is < 0) errors["uptimeS"] = ["Must be 0 or more."];
@@ -185,6 +185,9 @@ public static class DeviceEndpoints
 
         return Results.Ok(new { serverTime = now, heartbeatIntervalSeconds = await settings.GetIntAsync(SettingKeys.HeartbeatInterval, ct) });
     }
+
+    static async Task<bool> KeyOkAsync(HttpContext http, Station station, ISettings settings, CancellationToken ct) =>
+        StationAuth.IsRoomStationAuthenticated(http, station, await settings.GetIntAsync(SettingKeys.StationKeyRequired, ct) == 1);
 
     static Task<Station?> StationAsync(TamsDbContext db, string code, CancellationToken ct)
     {

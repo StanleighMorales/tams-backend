@@ -27,7 +27,8 @@ Roles: A = ADMIN, T = TECH_STAFF, C = CUSTODIAN, I = INSTRUCTOR. Routes omit the
 | `GET /audit-log` | x | | | | ADMIN only (decision #10; read-only, no write routes) |
 | `POST /enrollment/sessions`, `GET /enrollment/sessions/{id}`, `POST .../cancel`, `GET/DELETE /students/{id}/fingerprints` | x | x | x | | ADMIN, TECH_STAFF, CUSTODIAN (see Open decisions) |
 | `/kiosk/enrollment/sessions/*`, `/kiosk/{code}/session`, `/kiosk/{code}/sessions`, `/kiosk/sessions/{id}/*` | anon | anon | anon | anon | AllowAnonymous: device traffic. `X-Station-Code` must match the session's counter kiosk, plus the optional IP allowlist (`StationAuth`) |
-| `POST /stations/{code}/scans`, `POST /stations/{code}/heartbeat` | anon | anon | anon | anon | AllowAnonymous: the station named in the path must be live and active, plus the optional IP allowlist (`StationAuth.IsDeviceAllowed`) |
+| `POST /stations/{code}/scans`, `POST /stations/{code}/heartbeat` | anon | anon | anon | anon | AllowAnonymous: the station named in the path must be live and active, plus the optional IP allowlist, plus the room station's `X-Station-Key` (hash compared in constant time; `StationAuth.IsRoomStationAuthenticated`). A missing key is accepted only while `station_key_required` is 0 |
+| `POST /stations/{id}/rotate-key` | x | x | | | ADMIN, TECH_STAFF; returns the new key once |
 | `GET /approvals/pending`, `POST /approvals/{sessionId}/approve`, `/decline` | x | x | x | x | `Policies.AnyUser`; only the card owner of that session may decide, and not while frozen (FR-2.3) |
 | `GET /approvals/{sessionId}/photo` | x | x | x | x | the session's card owner, or ADMIN, TECH_STAFF, CUSTODIAN |
 | `GET /loans`, `GET /loans/{id}`, `GET /loans/{id}/photo`, `GET /anomalies` | x | x | x | x | INSTRUCTOR rows scoped to loans they approved or coordinate (FR-2.5) |
