@@ -3,6 +3,13 @@ name: tams
 # Three services, as decided in deployment-decision.md section 4. The same file
 # runs on the VPS and on a laptop for the defense-day fallback (section 14).
 
+# Container logs rotate so a long pilot cannot fill the disk (NFR-6, DEPLOY.md section 8).
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   db:
     image: postgres:17-alpine
@@ -19,6 +26,7 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    logging: *logging
 
   api:
     build: .
@@ -42,6 +50,7 @@ services:
       # ASP.NET Data Protection key ring (encrypts fingerprint templates). Lose it, lose the templates.
       - dp-keys:/app/keys
     restart: unless-stopped
+    logging: *logging
 
   proxy:
     image: caddy:2-alpine
@@ -57,6 +66,7 @@ services:
     depends_on:
       - api
     restart: unless-stopped
+    logging: *logging
 
 volumes:
   db-data:

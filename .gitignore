@@ -11,3 +11,7 @@ obj/
 media/
 # Development Data Protection key ring.
 keys/
+
+# Production secrets (docs/DEPLOY.md)
+secrets/
+*.pem
