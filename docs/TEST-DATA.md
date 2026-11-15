@@ -216,7 +216,11 @@ Send an explicit offset in `from` and `to`; `entityType` values are lowercase sn
 | INSTRUCTOR | `GET /rooms` | `GET /assets`, `GET /students`, `GET /settings`, `GET /users` |
 | none | `GET /health`, `/auth/login`, `/auth/refresh` | everything else gives 401 |
 
-## 14. Not on `dev` yet
+## 14. Excel checklist and report (TAMS-125)
+
+As ADMIN, with a room that has assets: `GET /api/rooms/{id}/checklist:export?format=xlsx` returns a workbook (columns asset_id, asset_code, name, category, serial_no, found, notes). Type `Y` in `found` for some rows and send it to `POST /api/audits/import` (multipart: `file`, `roomId`); a CSV still works, the format is detected from the file. Then `GET /api/audits/{id}/report?format=xlsx` (sheets Summary and Items), next to `pdf` and `csv`. Any other format is 400; a corrupt workbook is 400 `CSV_MALFORMED`.
+
+## 15. Not on `dev` yet
 
 Kiosk checkout and return, approvals, room scans, loans, anomalies, dashboard, events, inventory audits, notifications,
 violations, `POST /students` and the SignalR hub are on `feature/prd-transaction-core` and have no tickets yet.

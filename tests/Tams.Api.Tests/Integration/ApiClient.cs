@@ -18,11 +18,14 @@ public sealed class ApiClient(HttpClient http)
     public Task<HttpResponseMessage> PutRawAsync(string url, string json) =>
         http.PutAsync(url, new StringContent(json, Encoding.UTF8, "application/json"));
 
-    public Task<HttpResponseMessage> PostFileAsync(string url, string fileName, byte[] bytes, string contentType, string field = "file")
+    public Task<HttpResponseMessage> PostFileAsync(string url, string fileName, byte[] bytes, string contentType, string field = "file",
+        params (string Name, string Value)[] fields)
     {
         var file = new ByteArrayContent(bytes);
         file.Headers.ContentType = new MediaTypeHeaderValue(contentType);
-        return http.PostAsync(url, new MultipartFormDataContent { { file, field, fileName } });
+        var form = new MultipartFormDataContent { { file, field, fileName } };
+        foreach (var (n, v) in fields) form.Add(new StringContent(v), n);
+        return http.PostAsync(url, form);
     }
 
     /// <summary>Send with extra headers (kiosk routes need X-Station-Code).</summary>

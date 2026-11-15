@@ -1,4 +1,5 @@
 using System.Text;
+using ClosedXML.Excel;
 using Microsoft.EntityFrameworkCore;
 using Tams.Api.Assets;
 using Tams.Api.Auth;
@@ -81,6 +82,7 @@ public static class InventoryAuditEndpoints
         a.CompletedAt, a.SignedOffByUserId, a.SignedOffAt, a.ExpectedCount, a.MatchedCount, a.MissingCount, a.MisplacedCount,
         a.UnknownCount, a.ImportFileId,
         reportPdfUrl = $"/api/audits/{a.Id}/report?format=pdf", reportCsvUrl = $"/api/audits/{a.Id}/report?format=csv",
+        reportXlsxUrl = $"/api/audits/{a.Id}/report?format=xlsx",
     };
 
     static Task<List<Line>> LinesAsync(TamsDbContext db, Guid auditId, CancellationToken ct) =>
@@ -288,11 +290,11 @@ public static class InventoryAuditEndpoints
 
     // ---------------------------------------------------------------- reports and checklists (FR-7.6, FR-7.7)
 
-    /// <summary>PDF or CSV with counts, completion time, variance and sign-off lines. Rendered on request.</summary>
+    /// <summary>PDF, CSV or XLSX with counts, completion time, variance and sign-off lines. Rendered on request.</summary>
     static async Task<IResult> Report(Guid id, TamsDbContext db, CancellationToken ct, string format = "pdf")
     {
-        if (format is not ("pdf" or "csv"))
-            return Problems.Validation(new Dictionary<string, string[]> { ["format"] = ["pdf or csv."] });
+        if (format is not ("pdf" or "csv" or "xlsx"))
+            return Problems.Validation(new Dictionary<string, string[]> { ["format"] = ["pdf, csv or xlsx."] });
         var audit = await db.Audits.AsNoTracking().FirstOrDefaultAsync(a => a.Id == id, ct);
         if (audit is null) return AuditNotFound();
         if (audit.Status == AuditStatus.InProgress) return Problems.Conflict("AUDIT_NOT_COMPLETED", "Complete the audit first.");
@@ -301,6 +303,7 @@ public static class InventoryAuditEndpoints
             .ToDictionaryAsync(u => u.Id, u => $"{u.FirstName} {u.LastName}", ct);
         var lines = await LinesAsync(db, id, ct);
         var stamp = LocalTime.ToLocal(audit.CompletedAt ?? audit.StartedAt).ToString("yyyyMMdd");
+        if (format == "xlsx") return Results.File(ReportXlsx(audit, room, lines), Xlsx.ContentType, $"audit-{room.Code}-{stamp}.xlsx");
         return format == "csv"
             ? Results.File(Bom(ReportCsv(audit, room, lines)), "text/csv", $"audit-{room.Code}-{stamp}.csv")
             : Results.File(ReportPdf(audit, room, names.GetValueOrDefault(audit.StartedByUserId) ?? "-",
@@ -358,11 +361,34 @@ public static class InventoryAuditEndpoints
         return Encoding.UTF8.GetBytes(sb.ToString());
     }
 
-    /// <summary>FR-7.6: the room roster as a CSV (opens in Excel) with an empty found column to fill in.</summary>
-    static async Task<IResult> ExportChecklist(Guid id, TamsDbContext db, CancellationToken ct)
+    static byte[] ReportXlsx(Audit a, Room room, IReadOnlyList<Line> lines)
     {
+        using var wb = new XLWorkbook();
+        var summary = wb.AddWorksheet("Summary");
+        Xlsx.PutRows(summary, 1, [
+            ["room", "started_at", "completed_at", "expected", "matched", "missing", "misplaced", "unknown"],
+            [room.Code, a.StartedAt, a.CompletedAt, a.ExpectedCount, a.MatchedCount, a.MissingCount, a.MisplacedCount, a.UnknownCount],
+        ], header: true);
+        var items = wb.AddWorksheet("Items");
+        Xlsx.PutRows(items, 1, new List<IReadOnlyList<object?>> { new object?[] { "result", "asset_id", "asset_code", "name", "scanned_value", "scanned_at" } }
+            .Concat(lines.Select(l => (IReadOnlyList<object?>)new object?[] { Support.Label(l.Result), l.AssetId, l.AssetCode, l.Name, l.ScannedValue, l.ScannedAt })), header: true);
+        return Xlsx.ToBytes(wb);
+    }
+
+    /// <summary>FR-7.6: the room roster as CSV (default) or XLSX, with an empty found column to fill in.</summary>
+    static async Task<IResult> ExportChecklist(Guid id, TamsDbContext db, CancellationToken ct, string format = "csv")
+    {
+        if (format is not ("csv" or "xlsx"))
+            return Problems.Validation(new Dictionary<string, string[]> { ["format"] = ["csv or xlsx."] });
         var room = await db.Rooms.AsNoTracking().FirstOrDefaultAsync(r => r.Id == id && r.DeletedAt == null, ct);
         if (room is null) return RoomNotFound();
+        if (format == "xlsx")
+        {
+            using var wb = new XLWorkbook();
+            Xlsx.PutRows(wb.AddWorksheet("Checklist"), 1, new List<IReadOnlyList<object?>> { new object?[] { "asset_id", "asset_code", "name", "category", "serial_no", "found", "notes" } }
+                .Concat((await RosterItemsAsync(db, id, ct)).Select(r => (IReadOnlyList<object?>)new object?[] { r.Id, r.AssetCode, r.Name, r.Category, r.SerialNo, "", "" })), header: true);
+            return Results.File(Xlsx.ToBytes(wb), Xlsx.ContentType, $"checklist-{room.Code}.xlsx");
+        }
         var sb = new StringBuilder();
         sb.AppendLine("asset_id,asset_code,name,category,serial_no,found,notes");
         foreach (var r in await RosterItemsAsync(db, id, ct))
@@ -380,12 +406,13 @@ public static class InventoryAuditEndpoints
         if (!Guid.TryParse(form?["roomId"], out var roomId))
             return Problems.Validation(new Dictionary<string, string[]> { ["roomId"] = ["Required form field."] });
         var bytes = await MediaStore.ReadAllAsync(form?.Files["file"], MaxImportBytes, ct);
-        if (bytes is null) return Problems.BadRequest("FILE_REQUIRED", "Send the checklist CSV (up to 2 MB) in a 'file' field.");
+        if (bytes is null) return Problems.BadRequest("FILE_REQUIRED", "Send the checklist CSV or XLSX (up to 2 MB) in a 'file' field.");
         var room = await db.Rooms.AsNoTracking().FirstOrDefaultAsync(r => r.Id == roomId && r.DeletedAt == null, ct);
         if (room is null) return RoomNotFound();
 
         List<CsvReader.Record> records;
-        try { records = CsvReader.Parse(Encoding.UTF8.GetString(bytes)); }
+        var isXlsx = Xlsx.Looks(bytes);
+        try { records = isXlsx ? Xlsx.Read(bytes) : CsvReader.Parse(Encoding.UTF8.GetString(bytes)); }
         catch (FormatException ex) { return Problems.BadRequest("CSV_MALFORMED", ex.Message); }
         if (records.Count == 0) return Problems.BadRequest("CSV_EMPTY", "The file has no header row.");
         var header = records[0].Fields.Select(f => f.Trim().ToLowerInvariant()).ToList();
@@ -402,7 +429,8 @@ public static class InventoryAuditEndpoints
         var byCode = assets.ToDictionary(a => a.AssetCode, StringComparer.OrdinalIgnoreCase);
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
-        var media = await MediaStore.SaveAsync(db, cfg, MediaKind.AuditImport, "audit-imports", bytes, "text/csv", "csv", ct);
+        var media = await MediaStore.SaveAsync(db, cfg, MediaKind.AuditImport, "audit-imports", bytes,
+            isXlsx ? Xlsx.ContentType : "text/csv", isXlsx ? "xlsx" : "csv", ct);
         var audit = new Audit
         {
             Id = Guid.NewGuid(), RoomId = room.Id, Source = AuditSource.ExternalImport, Status = AuditStatus.InProgress,
