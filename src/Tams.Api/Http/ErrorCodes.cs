@@ -5,6 +5,7 @@ namespace Tams.Api.Http;
 public static class ErrorCodes
 {
     public const string AssetNotAvailable = "ASSET_NOT_AVAILABLE";
+    public const string AssetDamaged = "ASSET_DAMAGED";
     public const string StudentBlocked = "STUDENT_BLOCKED";
     public const string InstructorFrozen = "INSTRUCTOR_FROZEN";
     public const string PhotoFailed = "PHOTO_FAILED";

@@ -66,7 +66,7 @@ public static class KioskEndpoints
             .OrderByDescending(x => x.CreatedAt).FirstOrDefaultAsync(ct);
         return Results.Ok(new
         {
-            session = s is null ? null : View(s, now, poll),
+            session = s is null ? null : View(s, now, poll, await ItemAsync(db, s, ct)),
             lcdLines = s is null ? IdleLines : LcdJson.Read(s),
             pollIntervalSeconds = poll,
         });
@@ -281,13 +281,14 @@ public static class KioskEndpoints
         var asset = await db.Assets.FirstOrDefaultAsync(a => a.RfidTagUid == uid && a.DeletedAt == null, ct);
         var borrowable = asset is not null && asset.Type == AssetType.Borrowable
             && await db.AssetCategories.AnyAsync(c => c.Id == asset.CategoryId && c.IsBorrowable, ct);
+        s.AssetId = asset?.Id; // the last tapped item: every response carries its name and condition
 
         switch (s.Type)
         {
             case SessionType.Checkout:
             {
-                s.AssetId = asset?.Id;
                 var fail = asset is null ? "TAG_UNKNOWN" : !borrowable ? "ASSET_NOT_BORROWABLE"
+                    : asset.Condition == AssetCondition.Damaged ? ErrorCodes.AssetDamaged // F1 step 4
                     : asset.Status != AssetStatus.InStorage ? ErrorCodes.AssetNotAvailable : null;
                 if (fail is not null)
                 {
@@ -299,13 +300,12 @@ public static class KioskEndpoints
                 asset.UpdatedAt = now;
                 s.Status = SessionStatus.AwaitingPhoto;
                 s.ExpiresAt = now + idle;
-                s.LcdLines = LcdJson.Write(asset.AssetCode, "Look at the camera", "Taking photo...", "");
+                s.LcdLines = LcdJson.Write(asset.AssetCode, NameAndCondition(asset), "Look at the camera", "Taking photo...");
                 outbox.Staff("asset.statusChanged", LoanRules.StatusChanged(asset.Id, AssetStatus.InStorage, AssetStatus.AtCounter, asset.CurrentRoomId));
                 break;
             }
             case SessionType.Return:
             {
-                s.AssetId = asset?.Id;
                 var loan = asset is null ? null : await OpenLoanAsync(db, asset.Id, null, ct);
                 if (loan is null)
                 {
@@ -345,11 +345,14 @@ public static class KioskEndpoints
         var refusal = now >= evt.EndsAt || evt.Status is EventStatus.Closed or EventStatus.Cancelled ? "Event has ended"
             : asset is null ? "Unknown item tag"
             : !borrowable ? "Item not borrowable"
+            : asset.Condition == AssetCondition.Damaged ? "Item damaged" // FR-5.3
             : asset.Status != AssetStatus.InStorage ? "Item not available"
             : null;
         if (refusal is not null)
         {
-            s.LcdLines = LcdJson.Write(refusal, "Tap next item", $"{lent} borrowed", "OK when done");
+            // The batch carries on after a refusal; a damaged item also says who to ask.
+            s.LcdLines = LcdJson.Write(refusal, asset?.Condition == AssetCondition.Damaged ? "See lab staff" : "Tap next item",
+                $"{lent} borrowed", "OK when done");
             return;
         }
 
@@ -373,7 +376,7 @@ public static class KioskEndpoints
         asset.CurrentRoomId = stationed ? null : evt.VenueRoomId;
         asset.UpdatedAt = now;
         LoanRules.Ledger(db, LedgerEvent.Checkout, loan, now, s.StationId, details: new { sessionId = s.Id, eventId = evt.Id, batch = true });
-        s.LcdLines = LcdJson.Write($"Borrowed {asset.AssetCode}", "Tap next item", $"{lent + 1} borrowed", "OK when done");
+        s.LcdLines = LcdJson.Write($"Borrowed {asset.AssetCode}", NameAndCondition(asset), $"{lent + 1} borrowed", "OK when done");
         await db.SaveChangesAsync(ct);
 
         outbox.Staff("loan.created", LoanCreated(loan, asset));
@@ -547,7 +550,7 @@ public static class KioskEndpoints
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
         await outbox.FlushAsync(hub);
-        return Results.Ok(View(s, now, await settings.GetIntAsync(SettingKeys.PollInterval, ct)));
+        return Results.Ok(View(s, now, await settings.GetIntAsync(SettingKeys.PollInterval, ct), await ItemAsync(db, s, ct)));
     }
 
     static IResult Invalid(string field, string message) =>
