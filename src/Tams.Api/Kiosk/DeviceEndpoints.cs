@@ -19,7 +19,7 @@ public sealed record HeartbeatRequest(string? FirmwareVersion, short? Rssi, int?
 
 /// <summary>
 /// F3 room check-in and F8 heartbeats. Device traffic: anonymous to the JWT pipeline, the station is the
-/// one named in the path (StationAuth.IsDeviceAllowed). Allow-listed in Policies.AnonymousRoutes.
+/// one named in the path (StationAuth.IsRoomStationAuthenticated). Allow-listed in Policies.AnonymousRoutes.
 /// </summary>
 public static class DeviceEndpoints
 {
@@ -39,8 +39,8 @@ public static class DeviceEndpoints
         IHubContext<LiveHub> hub, CancellationToken ct)
     {
         var station = await StationAsync(db, code, ct);
-        if (station is null || station.Type != StationType.RoomStation || !StationAuth.IsDeviceAllowed(http, station))
-            return Problems.Forbidden("STATION_NOT_AUTHENTICATED", "Unknown or inactive room station.");
+        if (station is null || station.Type != StationType.RoomStation || !await KeyOkAsync(http, station, settings, ct))
+            return Problems.Forbidden("STATION_NOT_AUTHENTICATED", "Unknown or inactive room station, or a missing or wrong X-Station-Key.");
         if (!RfidUid.TryNormalize(req.TagUid, out var uid))
             return Problems.Validation(new Dictionary<string, string[]> { ["tagUid"] = ["Required: the tag UID in hex."] });
 
@@ -125,7 +125,7 @@ public static class DeviceEndpoints
     }
 
     /// <summary>One open anomaly per (type, asset, room): repeated wrong taps do not flood the queue.</summary>
-    static async Task RaiseAsync(TamsDbContext db, Outbox outbox, AnomalyType type, Asset asset, Loan? loan, Station station,
+    internal static async Task RaiseAsync(TamsDbContext db, Outbox outbox, AnomalyType type, Asset asset, Loan? loan, Station station,
         DateTimeOffset now, CancellationToken ct)
     {
         if (await db.Anomalies.AnyAsync(a => a.Type == type && a.AssetId == asset.Id && a.RoomId == station.RoomId
@@ -140,18 +140,26 @@ public static class DeviceEndpoints
         var evt = LoanRules.AnomalyEvent(anomaly, asset.AssetCode, loan?.LoanNo);
         outbox.Staff("anomaly.raised", evt);
         outbox.User(loan?.ApprovedByUserId ?? loan?.CoordinatorUserId, "anomaly.raised", evt);
-        // Only a loan has someone to tell; an unborrowed tap stays in the staff anomaly queue.
+        // TAMS-124: the approving instructor (loans only) and every staff mobile user, each once per open anomaly.
+        var details = await LoanRules.DetailsAsync(db, loan, asset.Id, station.RoomId, station.Id, ct);
+        var payload = LoanRules.With(evt, details);
         if (loan is not null)
             LoanRules.Notify(db, loan.ApprovedByUserId ?? loan.CoordinatorUserId, "ANOMALY_RAISED", "Item scanned in the wrong room",
-                $"{asset.Name} ({asset.AssetCode}) was scanned in {station.StationCode}, not its approved room.", loan, evt, now);
+                $"{asset.Name} ({asset.AssetCode}) was scanned in {station.StationCode}, not its approved room.", loan, payload, now);
+        var title = loan is null ? "Unborrowed item tapped" : "Item scanned in the wrong room";
+        var body = loan is null
+            ? $"{asset.Name} ({asset.AssetCode}) is not on loan but was tapped at {station.StationCode} ({details.Room?.Code})."
+            : $"{asset.Name} ({asset.AssetCode}), loan {loan.LoanNo}" + (details.Who == "" ? "" : $", {details.Who}")
+              + $", was scanned at {station.StationCode} ({details.Room?.Code}), not its approved room.";
+        await LoanRules.NotifyStaffAsync(db, "ANOMALY_RAISED", title, body, loan, payload, now, ct);
     }
 
     static async Task<IResult> Heartbeat(string code, HeartbeatRequest req, HttpContext http, TamsDbContext db, ISettings settings,
         IHubContext<LiveHub> hub, CancellationToken ct)
     {
         var station = await db.Stations.FirstOrDefaultAsync(s => s.StationCode == code.Trim().ToUpperInvariant() && s.DeletedAt == null, ct);
-        if (station is null || !StationAuth.IsDeviceAllowed(http, station))
-            return Problems.Forbidden("STATION_NOT_AUTHENTICATED", "Unknown or inactive station.");
+        if (station is null || !await KeyOkAsync(http, station, settings, ct))
+            return Problems.Forbidden("STATION_NOT_AUTHENTICATED", "Unknown or inactive station, or a missing or wrong X-Station-Key.");
         var errors = new Dictionary<string, string[]>();
         if (req.FirmwareVersion is { Length: > 30 }) errors["firmwareVersion"] = ["Up to 30 characters."];
         if (req.UptimeS is < 0) errors["uptimeS"] = ["Must be 0 or more."];
@@ -177,6 +185,9 @@ public static class DeviceEndpoints
 
         return Results.Ok(new { serverTime = now, heartbeatIntervalSeconds = await settings.GetIntAsync(SettingKeys.HeartbeatInterval, ct) });
     }
+
+    static async Task<bool> KeyOkAsync(HttpContext http, Station station, ISettings settings, CancellationToken ct) =>
+        StationAuth.IsRoomStationAuthenticated(http, station, await settings.GetIntAsync(SettingKeys.StationKeyRequired, ct) == 1);
 
     static Task<Station?> StationAsync(TamsDbContext db, string code, CancellationToken ct)
     {

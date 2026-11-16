@@ -21,6 +21,7 @@ public class TamsDbContext(DbContextOptions<TamsDbContext> options) : DbContext(
     public DbSet<AssetCategory> AssetCategories => Set<AssetCategory>();
     public DbSet<Asset> Assets => Set<Asset>();
     public DbSet<CheckoutSession> CheckoutSessions => Set<CheckoutSession>();
+    public DbSet<CheckoutSessionItem> CheckoutSessionItems => Set<CheckoutSessionItem>();
     public DbSet<Approval> Approvals => Set<Approval>();
     public DbSet<Loan> Loans => Set<Loan>();
     public DbSet<RoomScan> RoomScans => Set<RoomScan>();
@@ -103,6 +104,7 @@ public class TamsDbContext(DbContextOptions<TamsDbContext> options) : DbContext(
         b.Entity<Asset>().HasIndex(x => x.AssetCode).IsUnique().HasFilter(Live);
         b.Entity<Asset>().HasIndex(x => x.RfidTagUid).IsUnique().HasFilter(Live); // null allowed, many nulls fine
         b.Entity<Approval>().HasIndex(x => x.SessionId).IsUnique();
+        b.Entity<CheckoutSessionItem>().HasIndex(x => new { x.SessionId, x.AssetId }).IsUnique();
         b.Entity<Loan>().HasIndex(x => x.LoanNo).IsUnique();
         // An asset can have only one open loan (PRD 7.3).
         b.Entity<Loan>().HasIndex(x => x.AssetId).IsUnique().HasDatabaseName("ux_loans_open_asset")
@@ -135,9 +137,11 @@ public class TamsDbContext(DbContextOptions<TamsDbContext> options) : DbContext(
             t.HasCheckConstraint("ck_loans_class_length", "class_length_minutes IS NULL OR class_length_minutes BETWEEN 90 AND 180");
             t.HasCheckConstraint("ck_loans_grace", "grace_minutes BETWEEN 15 AND 30");
         });
+        b.Entity<Liability>().ToTable(t => t.HasCheckConstraint("ck_liabilities_one_liable",
+            "num_nonnulls(student_id, liable_user_id, liable_name) = 1"));
         b.Entity<Event>().ToTable(t => t.HasCheckConstraint("ck_events_period", "ends_at > starts_at"));
         // PRD 7.3: loans.photo_file_id is not null for STANDARD loans; BORROWABLE assets need a tag.
-        b.Entity<Loan>().ToTable(t => t.HasCheckConstraint("ck_loans_standard_photo", "type <> 'STANDARD' OR photo_file_id IS NOT NULL"));
+        b.Entity<Loan>().ToTable(t => t.HasCheckConstraint("ck_loans_standard_photo", "type <> 'STANDARD' OR photo_file_id IS NOT NULL OR photo_purged_at IS NOT NULL"));
         b.Entity<Asset>().ToTable(t => t.HasCheckConstraint("ck_assets_borrowable_tag", "type <> 'BORROWABLE' OR rfid_tag_uid IS NOT NULL"));
         b.Entity<CheckoutSession>().ToTable(t => t.HasCheckConstraint("ck_checkout_sessions_finger_index", "finger_index IS NULL OR finger_index BETWEEN 0 AND 9"));
     }
@@ -155,6 +159,8 @@ public class TamsDbContext(DbContextOptions<TamsDbContext> options) : DbContext(
             e.Property(x => x.ActiveMarkCount).HasDefaultValueSql("0");
             e.Property(x => x.HasActiveHold).HasDefaultValueSql("false").HasSentinel(false);
         });
+        b.Entity<Liability>().Property(x => x.Reason).HasDefaultValueSql("'MISSING'::liability_reason").HasSentinel(LiabilityReason.Missing);
+        b.Entity<FingerprintTemplate>().Property(x => x.TemplateFormat).HasDefaultValueSql("'RAW_V1'");
         b.Entity<Station>().Property(x => x.Health).HasDefaultValueSql("'OFFLINE'::station_health").HasSentinel(StationHealth.Offline);
         b.Entity<Asset>(e =>
         {

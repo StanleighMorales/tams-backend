@@ -33,9 +33,10 @@ namespace Tams.Api.Data.Migrations
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "custody_state", new[] { "AWAITING_ARRIVAL", "VERIFIED", "ANOMALY", "NOT_REQUIRED" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "device_platform", new[] { "ANDROID", "IOS", "WEB" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "event_status", new[] { "SCHEDULED", "ACTIVE", "CLOSED", "CANCELLED" });
-            NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "ledger_event", new[] { "CHECKOUT", "ROOM_VERIFIED", "LATE_ARRIVAL_WARNING", "RETURN", "OVERDUE", "MARKED_MISSING", "SETTLED" });
+            NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "ledger_event", new[] { "CHECKOUT", "ROOM_VERIFIED", "LATE_ARRIVAL_WARNING", "RETURN", "OVERDUE", "MARKED_MISSING", "SETTLED", "VOIDED" });
+            NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "liability_reason", new[] { "MISSING", "DAMAGE" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "liability_status", new[] { "OUTSTANDING", "SETTLED_PAYMENT", "SETTLED_REPLACEMENT", "WAIVED" });
-            NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "loan_status", new[] { "ACTIVE", "OVERDUE", "RETURNED", "MISSING" });
+            NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "loan_status", new[] { "ACTIVE", "OVERDUE", "RETURNED", "MISSING", "CANCELLED" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "loan_type", new[] { "STANDARD", "EVENT" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "media_kind", new[] { "CHECKOUT_PHOTO", "ASSET_IMAGE", "AUDIT_REPORT", "AUDIT_IMPORT", "QR_SHEET" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "penalty_reason", new[] { "LATE_ARRIVAL_LIMIT", "OVERDUE", "MISSING" });
@@ -797,6 +798,41 @@ namespace Tams.Api.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Tams.Api.Data.Entities.CheckoutSessionItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<Guid>("AssetId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("asset_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<Guid>("SessionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("session_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_checkout_session_items");
+
+                    b.HasIndex("AssetId")
+                        .HasDatabaseName("ix_checkout_session_items_asset_id");
+
+                    b.HasIndex("SessionId", "AssetId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_checkout_session_items_session_id_asset_id_uq");
+
+                    b.ToTable("checkout_session_items");
+                });
+
             modelBuilder.Entity("Tams.Api.Data.Entities.DeviceToken", b =>
                 {
                     b.Property<Guid>("Id")
@@ -954,6 +990,14 @@ namespace Tams.Api.Data.Migrations
                         .HasColumnType("bytea")
                         .HasColumnName("template");
 
+                    b.Property<string>("TemplateFormat")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("template_format")
+                        .HasDefaultValueSql("'RAW_V1'");
+
                     b.HasKey("Id")
                         .HasName("pk_fingerprint_templates");
 
@@ -1082,6 +1126,15 @@ namespace Tams.Api.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("asset_id");
 
+                    b.Property<string>("LiableName")
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("liable_name");
+
+                    b.Property<Guid?>("LiableUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("liable_user_id");
+
                     b.Property<Guid>("LoanId")
                         .HasColumnType("uuid")
                         .HasColumnName("loan_id");
@@ -1089,6 +1142,12 @@ namespace Tams.Api.Data.Migrations
                     b.Property<string>("Notes")
                         .HasColumnType("text")
                         .HasColumnName("notes");
+
+                    b.Property<LiabilityReason>("Reason")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("liability_reason")
+                        .HasColumnName("reason")
+                        .HasDefaultValueSql("'MISSING'::liability_reason");
 
                     b.Property<string>("ReceiptNo")
                         .HasMaxLength(40)
@@ -1107,7 +1166,7 @@ namespace Tams.Api.Data.Migrations
                         .HasColumnType("liability_status")
                         .HasColumnName("status");
 
-                    b.Property<Guid>("StudentId")
+                    b.Property<Guid?>("StudentId")
                         .HasColumnType("uuid")
                         .HasColumnName("student_id");
 
@@ -1116,6 +1175,9 @@ namespace Tams.Api.Data.Migrations
 
                     b.HasIndex("AssetId")
                         .HasDatabaseName("ix_liabilities_asset_id");
+
+                    b.HasIndex("LiableUserId")
+                        .HasDatabaseName("ix_liabilities_liable_user_id");
 
                     b.HasIndex("LoanId")
                         .IsUnique()
@@ -1127,7 +1189,10 @@ namespace Tams.Api.Data.Migrations
                     b.HasIndex("StudentId")
                         .HasDatabaseName("ix_liabilities_student_id");
 
-                    b.ToTable("liabilities");
+                    b.ToTable("liabilities", t =>
+                        {
+                            t.HasCheckConstraint("ck_liabilities_one_liable", "num_nonnulls(student_id, liable_user_id, liable_name) = 1");
+                        });
                 });
 
             modelBuilder.Entity("Tams.Api.Data.Entities.Loan", b =>
@@ -1149,6 +1214,20 @@ namespace Tams.Api.Data.Migrations
                     b.Property<Guid>("AssetId")
                         .HasColumnType("uuid")
                         .HasColumnName("asset_id");
+
+                    b.Property<string>("BorrowerIdNo")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("borrower_id_no");
+
+                    b.Property<string>("BorrowerName")
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("borrower_name");
+
+                    b.Property<Guid?>("BorrowerStudentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("borrower_student_id");
 
                     b.Property<DateTimeOffset>("CheckedOutAt")
                         .HasColumnType("timestamp with time zone")
@@ -1212,6 +1291,10 @@ namespace Tams.Api.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("photo_file_id");
 
+                    b.Property<DateTimeOffset?>("PhotoPurgedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("photo_purged_at");
+
                     b.Property<Guid?>("ReturnStationId")
                         .HasColumnType("uuid")
                         .HasColumnName("return_station_id");
@@ -1266,6 +1349,9 @@ namespace Tams.Api.Data.Migrations
                         .HasDatabaseName("ux_loans_open_asset")
                         .HasFilter("status IN ('ACTIVE','OVERDUE')");
 
+                    b.HasIndex("BorrowerStudentId")
+                        .HasDatabaseName("ix_loans_borrower_student_id");
+
                     b.HasIndex("CheckoutStationId")
                         .HasDatabaseName("ix_loans_checkout_station_id");
 
@@ -1306,7 +1392,7 @@ namespace Tams.Api.Data.Migrations
 
                             t.HasCheckConstraint("ck_loans_grace", "grace_minutes BETWEEN 15 AND 30");
 
-                            t.HasCheckConstraint("ck_loans_standard_photo", "type <> 'STANDARD' OR photo_file_id IS NOT NULL");
+                            t.HasCheckConstraint("ck_loans_standard_photo", "type <> 'STANDARD' OR photo_file_id IS NOT NULL OR photo_purged_at IS NOT NULL");
                         });
                 });
 
@@ -1797,6 +1883,11 @@ namespace Tams.Api.Data.Migrations
                         .HasMaxLength(45)
                         .HasColumnType("character varying(45)")
                         .HasColumnName("ip_address");
+
+                    b.Property<string>("KeyHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("key_hash");
 
                     b.Property<DateTimeOffset?>("LastHeartbeatAt")
                         .HasColumnType("timestamp with time zone")
@@ -2471,6 +2562,23 @@ namespace Tams.Api.Data.Migrations
                         .HasConstraintName("fk_checkout_sessions_student_id");
                 });
 
+            modelBuilder.Entity("Tams.Api.Data.Entities.CheckoutSessionItem", b =>
+                {
+                    b.HasOne("Tams.Api.Data.Entities.Asset", null)
+                        .WithMany()
+                        .HasForeignKey("AssetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_checkout_session_items_asset_id");
+
+                    b.HasOne("Tams.Api.Data.Entities.CheckoutSession", null)
+                        .WithMany()
+                        .HasForeignKey("SessionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_checkout_session_items_session_id");
+                });
+
             modelBuilder.Entity("Tams.Api.Data.Entities.DeviceToken", b =>
                 {
                     b.HasOne("Tams.Api.Data.Entities.User", null)
@@ -2579,6 +2687,12 @@ namespace Tams.Api.Data.Migrations
                         .IsRequired()
                         .HasConstraintName("fk_liabilities_asset_id");
 
+                    b.HasOne("Tams.Api.Data.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("LiableUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_liabilities_liable_user_id");
+
                     b.HasOne("Tams.Api.Data.Entities.Loan", null)
                         .WithMany()
                         .HasForeignKey("LoanId")
@@ -2596,7 +2710,6 @@ namespace Tams.Api.Data.Migrations
                         .WithMany()
                         .HasForeignKey("StudentId")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
                         .HasConstraintName("fk_liabilities_student_id");
                 });
 
@@ -2620,6 +2733,12 @@ namespace Tams.Api.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_loans_asset_id");
+
+                    b.HasOne("Tams.Api.Data.Entities.Student", null)
+                        .WithMany()
+                        .HasForeignKey("BorrowerStudentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_loans_borrower_student_id");
 
                     b.HasOne("Tams.Api.Data.Entities.Station", null)
                         .WithMany()

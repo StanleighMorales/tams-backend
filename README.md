@@ -98,33 +98,61 @@ docs/SIMULATOR.md      interactive kiosk simulator served at /sim in Development
 
 ## Kiosk and stations
 
-Devices hold no credentials (FR-1.4). The counter kiosk sends `X-Station-Code: <station_code>` on
-every call; room stations name themselves in the path. Every kiosk response has the same shape:
+The counter kiosk holds no credentials (FR-1.4); it sends `X-Station-Code: <station_code>` on
+every call. Room stations name themselves in the path and also send their own key in `X-Station-Key` (TAMS-127):
+the key is shown once when the station is created (`POST /api/stations`) or rotated (`POST /api/stations/{id}/rotate-key`), and
+only its hash is stored. A wrong key, or a missing one once the setting `station_key_required` is 1, gets 403
+`STATION_NOT_AUTHENTICATED`. While it is 0 (the default, a grace period) stations that have no key loaded still work; set it to 1 after
+every room station has its key. Every kiosk response has the same shape:
 `sessionId`, `type`, `status`, `nextStep` (`FINGERPRINT`, `ASSET`, `PHOTO`, `WAIT`, `CONFIRM`, `DONE`),
 the 4 `lcdLines` to show, `failureCode` and `pollIntervalSeconds`. A denial is `status: FAILED` with
-the reason already on the LCD lines, not an HTTP error.
+the reason already on the LCD lines, not an HTTP error. Once an item tag has been tapped the response also
+carries `item` (`assetCode`, `name`, `condition` GOOD, FAIR or DAMAGED) and the LCD shows "Laptop - GOOD". A
+DAMAGED item is refused in checkout (`failureCode: ASSET_DAMAGED`, LCD "Item damaged / See lab staff") and in
+event batch (same text, the batch carries on); returning a damaged item is still allowed.
+
+**Several items per checkout and return (TAMS-121).** The setting `max_items_per_transaction` (1 to 10, default 1;
+ADMIN or TECH_STAFF can change it) is how many items one student takes in one checkout. The limit that applies is the smaller of
+it and what is left of `max_active_loans_per_student`. At 1 nothing changes: the first tap goes to the photo. Above 1, after the
+fingerprint the LCD says "Up to N items" and each tap adds the item ("Added LP-014 / Laptop - GOOD / 1 of 3   X=undo /
+Scan item or OK"); `POST .../confirm` (OK) ends the item step and the kiosk goes to the photo, reaching the limit does the same, and
+`POST .../cancel` (X) takes the last item back out (with none left it cancels the checkout). A refused tap (damaged, unknown, not
+available, `Already added`) shows the reason and the checkout carries on once there is at least one item; with none it is a denial.
+The session view has `items` (`assetCode`, `name`, `condition`). The approval request (`approval.requested`, `GET /approvals/pending`,
+the FCM payload) has `items` too, with `asset` still holding the first item. The student's Confirm creates one loan per item with the
+same room, class length, due time and approval. A RETURN session keeps taking items when the setting is above 1 and OK is Done.
+A multi-item transaction gets one Late Arrival Warning and one Non-Compliance Mark, not one per item.
+
+In event batch, **Cancel undoes the last item lent** (the loan is voided, the item goes back to `IN_STORAGE`, LCD "Removed LP-014");
+with nothing left to undo it ends the session. Staff void an unopened event loan from the web with
+`POST /api/loans/{id}/void` `{"reason":"..."}` (ADMIN, TECH_STAFF). Only an event loan that is still `ACTIVE` and has not reached
+its venue can be voided (`LOAN_NOT_VOIDABLE` otherwise). A voided loan stays as status `CANCELLED`; the append-only ledger gets a
+`VOIDED` row and the audit log a `LOAN_VOIDED` row with the actor.
 
 | Step | Call |
 |---|---|
 | Idle poll (picks up a staff-started enrollment) | `GET /api/kiosk/{code}/session` |
 | Card tap (or `{"type":"RETURN"}` to return an item) | `POST /api/kiosk/{code}/sessions` `{"cardUid":"A1B2C3D4"}` |
-| Fingerprint (base64 template) | `POST /api/kiosk/sessions/{id}/fingerprint` `{"template":"..."}` |
+| Fingerprint (base64 raw sensor image, 8-bit gray, `width` x `height` bytes) | `POST /api/kiosk/sessions/{id}/fingerprint` `{"image":"...","width":256,"height":288,"sensorModel":"AS608"}` |
 | Item tag | `POST /api/kiosk/sessions/{id}/asset` `{"tagUid":"04A1B2C3"}` |
 | Photo (multipart `file`, JPEG; no file = camera failed) | `POST /api/kiosk/sessions/{id}/photo` |
 | Poll every 2 s while `WAIT` | `GET /api/kiosk/sessions/{id}` |
 | OK / X buttons (OK is also "Done" in batch modes) | `POST /api/kiosk/sessions/{id}/confirm`, `.../cancel` |
-| Room station scan; reply `signal` is `SUCCESS` (green, chime) or `ERROR` (red, low tone) | `POST /api/stations/{code}/scans` `{"tagUid":"..."}` |
-| Heartbeat every 30 to 60 s | `POST /api/stations/{code}/heartbeat` `{"firmwareVersion":"1.0.3","rssi":-61,"uptimeS":1200,"freeHeap":180000}` |
+| Room station scan (header `X-Station-Key`); reply `signal` is `SUCCESS` (green, chime) or `ERROR` (red, low tone) | `POST /api/stations/{code}/scans` `{"tagUid":"..."}` |
+| Heartbeat every 30 to 60 s (room stations send `X-Station-Key`) | `POST /api/stations/{code}/heartbeat` `{"firmwareVersion":"1.0.3","rssi":-61,"uptimeS":1200,"freeHeap":180000}` |
 
 The instructor approves from the phone (`GET /api/approvals/pending`, `POST /api/approvals/{sessionId}/approve`).
 Live events (PRD 6.4) arrive over SignalR at `/hubs/live?access_token=<jwt>`. Background jobs:
 `LoanSweeper` (transit timeouts, overdue, kiosk session expiry, station health).
 
-**The fingerprint matcher is a placeholder** (TAMS-58): bit-similarity over the raw template bytes
-against an in-memory cache of decrypted templates. It tolerates noisy rescans of the same bytes but is
-not real minutiae matching; see `docs/STATUS.md`. Calibration knob: `Kiosk:MatchThreshold` (default
-0.85, range 0 to 1; env `Kiosk__MatchThreshold`). To simulate a noisy rescan, flip about 5% of the bits of
-the enrolled template and submit it as base64.
+**Fingerprint matching (TAMS-128).** The kiosk uploads the sensor image; the API builds a SourceAFIS
+template in memory, matches it 1:N against an in-memory cache of decrypted templates, and discards the
+image. Only the encrypted template is stored (`template_format` = `SOURCEAFIS_V1`). Nothing image-like is
+written to disk, the database or logs. The threshold `Kiosk:SourceAfisThreshold` (env
+`Kiosk__SourceAfisThreshold`, default 40) is **provisional**: it is the library's documented 1-in-100,000
+false-match point and has not been calibrated on real AS608 captures (blocked on hardware TAMS-52). The
+old raw-template path (`Kiosk:MatchThreshold`, Hamming distance, `RAW_V1` rows) stays for the simulator
+and for rows enrolled before TAMS-128; see `docs/STATUS.md`.
 
 ## Database migrations
 

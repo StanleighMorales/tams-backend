@@ -1,12 +1,14 @@
 using System.Linq.Expressions;
 using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
+using Tams.Api.Assets;
 using Tams.Api.Data;
 using Tams.Api.Data.Entities;
 using Tams.Api.Enrollment;
 using Tams.Api.Facilities;
 using Tams.Api.Live;
 using Tams.Api.Loans;
+using Tams.Api.Settings;
 using static Tams.Api.Enrollment.EnrollmentSessions;
 
 namespace Tams.Api.Kiosk;
@@ -36,19 +38,21 @@ static class KioskSessions
     public static async Task EndAsync(TamsDbContext db, CheckoutSession s, SessionStatus status, string? failureCode,
         string[] lcd, Outbox outbox, DateTimeOffset now, CancellationToken ct)
     {
-        // Only a session past the tag step holds its item; a refused tap records asset_id without holding it.
-        var holdsAsset = s.Status is SessionStatus.AwaitingPhoto or SessionStatus.AwaitingApproval or SessionStatus.AwaitingConfirm;
         s.Status = status;
         s.FailureCode = failureCode;
         s.CompletedAt = now;
         s.LcdLines = LcdJson.Write(lcd);
 
-        if (holdsAsset && status != SessionStatus.Completed && s.Type == SessionType.Checkout && s.AssetId is Guid assetId)
+        // Items collected for a checkout go back to storage unless the loans were created (TAMS-121).
+        if (status != SessionStatus.Completed && s.Type == SessionType.Checkout)
         {
-            var released = await db.Assets.Where(a => a.Id == assetId && a.Status == AssetStatus.AtCounter)
-                .ExecuteUpdateAsync(u => u.SetProperty(a => a.Status, AssetStatus.InStorage).SetProperty(a => a.UpdatedAt, now), ct);
-            if (released > 0)
+            var held = await (from i in db.CheckoutSessionItems where i.SessionId == s.Id
+                              join a in db.Assets on i.AssetId equals a.Id where a.Status == AssetStatus.AtCounter select a.Id).ToListAsync(ct);
+            foreach (var assetId in held)
+            {
+                await db.Assets.Where(a => a.Id == assetId).ExecuteUpdateAsync(u => u.SetProperty(a => a.Status, AssetStatus.InStorage).SetProperty(a => a.UpdatedAt, now), ct);
                 outbox.Staff("asset.statusChanged", LoanRules.StatusChanged(assetId, AssetStatus.AtCounter, AssetStatus.InStorage, null));
+            }
         }
 
         var pending = await db.Approvals.FirstOrDefaultAsync(a => a.SessionId == s.Id && a.Decision == ApprovalDecision.Pending, ct);
@@ -82,7 +86,38 @@ static class KioskSessions
         }
     }
 
-    public static object View(CheckoutSession s, DateTimeOffset now, int pollSeconds)
+    /// <summary>The last tapped item with its condition, so the kiosk can show both (F1 step 4). Null before any tap.</summary>
+    public static async Task<object?> ItemAsync(TamsDbContext db, CheckoutSession s, CancellationToken ct)
+    {
+        if (s.AssetId is not Guid id) return null;
+        var a = await db.Assets.AsNoTracking().Where(x => x.Id == id).Select(x => new { x.AssetCode, x.Name, x.Condition }).FirstOrDefaultAsync(ct);
+        return a is null ? null : new { a.AssetCode, a.Name, condition = EnumText.ToApi(a.Condition) };
+    }
+
+    /// <summary>The items a checkout session has collected, in tap order (E8). Null for other session types.</summary>
+    public static async Task<object?> ItemsAsync(TamsDbContext db, CheckoutSession s, CancellationToken ct)
+    {
+        if (s.Type != SessionType.Checkout) return null;
+        var rows = await (from i in db.CheckoutSessionItems.AsNoTracking() where i.SessionId == s.Id
+                          join a in db.Assets.AsNoTracking() on i.AssetId equals a.Id orderby i.CreatedAt
+                          select new { a.AssetCode, a.Name, a.Condition }).ToListAsync(ct);
+        return rows.Select(a => new { a.AssetCode, a.Name, condition = EnumText.ToApi(a.Condition) }).ToList();
+    }
+
+    /// <summary>
+    /// E8: how many items this student may take in one checkout. The smaller of max_items_per_transaction and what is left of
+    /// max_active_loans_per_student (FR-1.9); ByLoanCap says the loan cap is the one that binds.
+    /// </summary>
+    public static async Task<(int Limit, bool ByLoanCap)> LimitAsync(TamsDbContext db, ISettings settings, Guid studentId, CancellationToken ct)
+    {
+        var perTransaction = await settings.GetIntAsync(SettingKeys.MaxItems, ct);
+        var cap = await settings.GetIntAsync(SettingKeys.MaxActiveLoans, ct);
+        var active = await db.Loans.CountAsync(l => l.StudentId == studentId && (l.Status == LoanStatus.Active || l.Status == LoanStatus.Overdue), ct);
+        var left = Math.Max(0, cap - active);
+        return (Math.Min(perTransaction, left), left < perTransaction);
+    }
+
+    public static object View(CheckoutSession s, DateTimeOffset now, int pollSeconds, object? item = null, object? items = null)
     {
         var lines = LcdJson.Read(s);
         if (s.Status == SessionStatus.AwaitingApproval)
@@ -91,7 +126,7 @@ static class KioskSessions
         {
             sessionId = s.Id, type = Support.Label(s.Type), status = Support.Label(s.Status), nextStep = NextStep(s.Status),
             lcdLines = lines, finished = !IsOpen(s.Status), failureCode = s.FailureCode, s.ExpiresAt,
-            pollIntervalSeconds = pollSeconds,
+            pollIntervalSeconds = pollSeconds, item, items,
         };
     }
 
@@ -120,6 +155,21 @@ static class KioskSessions
         return $"{(a.Name.Length > room ? a.Name[..room] : a.Name)} {a.AssetCode}".Trim();
     }
 
+    /// <summary>"Laptop - GOOD", the name cut to fit 20 columns.</summary>
+    public static string NameAndCondition(Asset a)
+    {
+        var cond = EnumText.ToApi(a.Condition);
+        var room = 20 - cond.Length - 3;
+        return $"{(a.Name.Length > room ? a.Name[..room] : a.Name)} - {cond}";
+    }
+
+    /// <summary>"3 items: LP-014 +2" for the confirm screen of a multi-item checkout.</summary>
+    public static string Several(IReadOnlyList<Asset> a)
+    {
+        var line = $"{a.Count} items: {a[0].AssetCode} +{a.Count - 1}";
+        return line.Length <= 20 ? line : $"{a.Count} items +{a.Count - 1} more";
+    }
+
     public static string Reason(string code) => code switch
     {
         "CARD_UNKNOWN" => "Card not recognized",
@@ -136,6 +186,8 @@ static class KioskSessions
         "TAG_UNKNOWN" => "Unknown item tag",
         "ASSET_NOT_BORROWABLE" => "Item not borrowable",
         "ASSET_NOT_AVAILABLE" => "Item not available",
+        "ASSET_DAMAGED" => "Item damaged",
+        "ALREADY_ADDED" => "Already added",
         "PHOTO_FAILED" => "Camera error",
         "APPROVAL_DECLINED" => "Declined by instr.",
         "APPROVAL_TIMEOUT" => "No approval in time",
@@ -146,18 +198,29 @@ static class KioskSessions
 
     public static string[] Denied(CheckoutSession s, string code) =>
         code == "FINGERPRINT_NOT_RECOGNIZED" ? ["Fingerprint not", "recognized", "See lab staff", ""] // 20-col LCD
+        : code == "ASSET_DAMAGED" ? ["Item damaged", "See lab staff", "", ""]
         : [Reason(code), s.Type == SessionType.Return || s.Type == SessionType.EventReturn ? "Return failed" : "Borrow denied", "See lab staff", ""];
 
     // ---------------------------------------------------------------- fingerprint 1:N (FR-1.3)
 
     /// <summary>
-    /// Matches the probe against the cached decrypted templates (see <see cref="FingerprintMatcher"/>).
+    /// Legacy path: matches raw template bytes against RAW_V1 rows (see <see cref="FingerprintMatcher"/>).
     /// Threshold: Kiosk:MatchThreshold, default <see cref="FingerprintMatcher.DefaultThreshold"/>.
     /// </summary>
     public static async Task<Guid?> MatchAsync(TamsDbContext db, IServiceProvider sp, byte[] probe, CancellationToken ct)
     {
         var threshold = sp.GetRequiredService<IConfiguration>().GetValue("Kiosk:MatchThreshold", FingerprintMatcher.DefaultThreshold);
-        return FingerprintMatcher.Match(probe, await TemplateCache.GetAsync(db, sp, ct), threshold);
+        return FingerprintMatcher.Match(probe, (await TemplateCache.GetAsync(db, sp, ct)).Raw, threshold);
+    }
+
+    /// <summary>
+    /// Real path (TAMS-128): matches a SourceAFIS template built from the uploaded image against SOURCEAFIS_V1 rows.
+    /// Threshold: Kiosk:SourceAfisThreshold, default <see cref="SourceAfisMatcher.DefaultThreshold"/> (provisional).
+    /// </summary>
+    public static async Task<Guid?> MatchAsync(TamsDbContext db, IServiceProvider sp, SourceAFIS.FingerprintTemplate probe, CancellationToken ct)
+    {
+        var threshold = sp.GetRequiredService<IConfiguration>().GetValue("Kiosk:SourceAfisThreshold", SourceAfisMatcher.DefaultThreshold);
+        return SourceAfisMatcher.Match(probe, (await TemplateCache.GetAsync(db, sp, ct)).Afis, threshold);
     }
 
     /// <summary>

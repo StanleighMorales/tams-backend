@@ -77,6 +77,8 @@ public class FingerprintTemplate
     public Guid StudentId { get; set; }
     public short FingerIndex { get; set; }
     public byte[] Template { get; set; } = [];
+    /// <summary>RAW_V1 (legacy sensor bytes) or SOURCEAFIS_V1 (template built from the uploaded image).</summary>
+    [MaxLength(20)] public string TemplateFormat { get; set; } = "RAW_V1";
     [MaxLength(30)] public string SensorModel { get; set; } = "";
     public short? QualityScore { get; set; }
     public Guid EnrolledByUserId { get; set; }

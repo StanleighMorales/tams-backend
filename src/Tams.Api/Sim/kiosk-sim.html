@@ -58,6 +58,7 @@ nav a{color:var(--accent)}nav a.on{font-weight:700;text-decoration:none;color:va
   <label>API base URL<input id="base" size="22" autocomplete="off"></label>
   <label>Counter kiosk <small>station_code</small><input id="station" size="10" autocomplete="off"></label>
   <label>Room reader <small>station_code</small><input id="roomStation" size="10" autocomplete="off"></label>
+  <label>Room reader <small>X-Station-Key</small><input id="roomKey" size="14" autocomplete="off"></label>
   <label class="inline"><input type="checkbox" id="wifi" checked> Wi-Fi on</label>
   <label class="inline"><input type="checkbox" id="mute"> Mute buzzer</label>
   <label class="inline"><input type="checkbox" id="showPolls"> Show polls in log</label>
@@ -137,12 +138,13 @@ nav a{color:var(--accent)}nav a.on{font-weight:700;text-decoration:none;color:va
   </div>
   <div class="row">
     <label>Noise (bytes flipped): <output id="noiseOut">0</output><input id="noise" type="range" min="0" max="256" value="0"></label>
-    <label class="inline"><input type="checkbox" id="wrongFinger"> Wrong finger (random template)</label>
+    <label class="inline"><input type="checkbox" id="wrongFinger"> Wrong finger (random finger)</label>
+    <label class="inline"><input type="checkbox" id="sendImage" checked> Send sensor image (SourceAFIS)</label>
   </div>
   <div class="row">
     <button id="finger" class="primary">Place finger</button>
   </div>
-  <div class="hint">Template = 512 bytes (the AS608 character file size) derived from student no. + finger index. The API accepts a scan when its similarity to a stored template is at least <code>Kiosk:MatchThreshold</code> (default 0.85), so a few flipped bytes still match and a lot do not. The bytes are made up, so this shows the threshold behaviour, not real sensor noise. The student must be enrolled first (Enrollment below, or a scenario does it).</div>
+  <div class="hint">Default: the kiosk uploads the sensor <b>image</b> (TAMS-128): 256x288 raw 8-bit gray, base64, with <code>width</code> and <code>height</code>. The API builds a SourceAFIS template in memory, matches it 1:N against enrolled fingers, stores only the encrypted template and discards the image. The image here is a synthetic ridge pattern derived from student no. + finger index; Noise adds pixel noise and a small shift per scan. A match needs a SourceAFIS score of at least <code>Kiosk:SourceAfisThreshold</code> (provisional default 40, not calibrated on real AS608 captures). Untick "Send sensor image" for the legacy 512-byte template (<code>Kiosk:MatchThreshold</code>, Hamming distance, made-up bytes). Fingers enrolled one way only match the same way; delete and re-enroll to switch. The student must be enrolled first (Enrollment below, or a scenario does it).</div>
   <div class="row">
     <button id="enroll">Enrollment mode: start on kiosk (needs staff login)</button>
   </div>
@@ -243,12 +245,12 @@ for (const a of document.querySelectorAll("nav a")) if (a.getAttribute("href") =
 const STORE_KEY = "tams-sim" + (device ? "-" + device : "");
 const DEFAULTS = {
   latency: 0, loss: 0, timeout: 5, roomTagUid: "E2000017221101441890",
-  base: "/api", station: "KIOSK-1", roomStation: "ROOM-101", hbInterval: 30, hbJitter: 2, hbKiosk: true, hbRoom: true,
+  base: "/api", station: "KIOSK-1", roomStation: "ROOM-101", roomKey: "demo-room-101-key", hbInterval: 30, hbJitter: 2, hbKiosk: true, hbRoom: true,
   cardUid: "04A1B2C3", tagUid: "E2000017221101441890", studentNo: "2024-0001", fingerIdx: 1, noise: 0,
   autoPhoto: true, mute: false, showPolls: false, scLen: "90",
   phEmail: "instructor@tams.test", phPw: "Demo#Pass123", stEmail: "admin@tams.test", stPw: "Admin#Pass123", loansAuto: true,
 };
-const SAVED = ["base","station","roomStation","hbInterval","hbJitter","hbKiosk","hbRoom","latency","loss","timeout","roomTagUid","cardUid","tagUid","studentNo","fingerIdx","noise","autoPhoto","mute","showPolls","scLen","phEmail","stEmail","loansAuto"];
+const SAVED = ["base","station","roomStation","roomKey","hbInterval","hbJitter","hbKiosk","hbRoom","latency","loss","timeout","roomTagUid","cardUid","tagUid","studentNo","fingerIdx","noise","autoPhoto","mute","showPolls","scLen","phEmail","stEmail","loansAuto"];
 let cfg = { ...DEFAULTS };
 try { Object.assign(cfg, JSON.parse(localStorage.getItem(STORE_KEY) || "{}")); } catch { /* private window: run on defaults */ }
 function saveCfg() { try { localStorage.setItem(STORE_KEY, JSON.stringify(Object.fromEntries(SAVED.map(k => [k, cfg[k]])))); } catch { /* ignore */ } }
@@ -282,7 +284,7 @@ $("logCopy").onclick = async () => { try { await navigator.clipboard.writeText([
 
 const actors = { phone: { tag: "PHONE" }, staff: { tag: "STAFF" } };
 function url(path) { return cfg.base.replace(/\/$/, "") + path; }
-/** opts: body, form, station (send X-Station-Code), hw (Wi-Fi gated), actor, poll */
+/** opts: body, form, station (send X-Station-Code), key (send X-Station-Key), hw (Wi-Fi gated), actor, poll */
 async function api(method, path, o = {}) {
   const tag = o.tag || (o.actor ? actors[o.actor].tag : "HW");
   if (o.hw && !wifiOn()) { logLine("s0", `${tag} ${method} ${path} -> BLOCKED (Wi-Fi off)`, "", o.poll); return { status: 0, ok: false, data: null, offline: true }; }
@@ -292,6 +294,7 @@ async function api(method, path, o = {}) {
   }
   const headers = {};
   if (o.station) headers["X-Station-Code"] = cfg.station;
+  if (o.key && cfg.roomKey.trim()) headers["X-Station-Key"] = cfg.roomKey.trim();
   if (o.actor && actors[o.actor].token) headers.Authorization = "Bearer " + actors[o.actor].token;
   let body;
   if (o.form) body = o.form; else if (o.body !== undefined) { headers["Content-Type"] = "application/json"; body = JSON.stringify(o.body); }
@@ -310,7 +313,7 @@ async function api(method, path, o = {}) {
   if (res.status === 401 && o.actor && !o.retried && await relogin(o.actor)) return api(method, path, { ...o, retried: true });
   return { status: res.status, ok: res.ok, data };
 }
-const redact = b => b && typeof b === "object" ? Object.fromEntries(Object.entries(b).map(([k, v]) => [k, /password|template/i.test(k) ? "[hidden]" : v])) : b;
+const redact = b => b && typeof b === "object" ? Object.fromEntries(Object.entries(b).map(([k, v]) => [k, /password|template|image/i.test(k) ? "[hidden]" : v])) : b;
 
 async function login(actor, email, password) {
   const a = actors[actor]; a.email = email; a.password = password;
@@ -379,8 +382,11 @@ async function kStart(type, card) {
 const sid = () => K.session;
 async function kFinger() {
   if (!sid()) { logNote("No open session: tap a card or start RETURN first (sending anyway is a protocol error)."); }
-  const tpl = fpTemplate(cfg.studentNo, +cfg.fingerIdx, $("wrongFinger").checked, +cfg.noise);
-  const r = await kiosk("POST", `/kiosk/sessions/${sid() || "00000000-0000-0000-0000-000000000000"}/fingerprint`, { body: { template: tpl, sensorModel: "AS608", qualityScore: 90 } });
+  const wrong = $("wrongFinger").checked, noise = +cfg.noise;
+  const body = $("sendImage").checked
+    ? { image: fpImage(cfg.studentNo, +cfg.fingerIdx, wrong, noise), width: FP_W, height: FP_H, sensorModel: "AS608", qualityScore: 90 }
+    : { template: fpTemplate(cfg.studentNo, +cfg.fingerIdx, wrong, noise), sensorModel: "AS608", qualityScore: 90 };
+  const r = await kiosk("POST", `/kiosk/sessions/${sid() || "00000000-0000-0000-0000-000000000000"}/fingerprint`, { body });
   if (r.ok) render(r.data); return r;
 }
 async function kTag(tag) {
@@ -430,7 +436,35 @@ $("roomTagSel").onchange = e => { if (e.target.value) { $("roomTagUid").value = 
 $("tagSel").onchange = e => { if (e.target.value) { $("tagUid").value = e.target.value; cfg.tagUid = e.target.value; saveCfg(); } };
 $("wifi").onchange = () => logNote("Wi-Fi " + (wifiOn() ? "ON" : "OFF"));
 
-// ---------------------------------------------------------------- fingerprint template
+// ---------------------------------------------------------------- fingerprint image (TAMS-128)
+const FP_W = 256, FP_H = 288;
+function seeded(str) {
+  let h = 2166136261; for (const c of str) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); }
+  return () => { h |= 0; h = h + 0x6D2B79F5 | 0; let t = Math.imul(h ^ h >>> 15, 1 | h); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+}
+// Same recipe as tests/Tams.Api.Tests/FixtureFingerprints.cs: ridge field plus a spiral core and 8 dislocations.
+// Rescan = same finger shifted a few pixels with sensor noise. Raw 8-bit gray, base64.
+function fpImage(studentNo, finger, wrong, noise) {
+  const f = seeded(wrong ? "wrong-" + Math.random() : `TAMS-SIM|${studentNo}|${finger}`);
+  const theta = f() * Math.PI, period = 8.5 + f() * 2;
+  const cx = 100 + f() * 56, cy = 110 + f() * 68, turns = 2 + Math.floor(f() * 3);
+  const dis = Array.from({ length: 8 }, () => ({ x: 50 + f() * 156, y: 60 + f() * 170, s: Math.floor(f() * 2) * 2 - 1 }));
+  const a1 = 2 + f() * 3, a2 = 2 + f() * 3, p1 = f() * 6.28, p2 = f() * 6.28;
+  const amp = Math.min(noise / 4, 60), dx = Math.round((Math.random() - .5) * 4), dy = Math.round((Math.random() - .5) * 4);
+  const img = new Uint8Array(FP_W * FP_H);
+  for (let y = 0; y < FP_H; y++) for (let x = 0; x < FP_W; x++) {
+    const u = x + dx, v = y + dy;
+    let ph = (u * Math.cos(theta) + v * Math.sin(theta)) / period + a1 * Math.sin(u / 37 + p1) + a2 * Math.sin(v / 29 + p2) + turns * Math.atan2(v - cy, u - cx) / (2 * Math.PI);
+    for (const d of dis) ph += d.s * Math.atan2(v - d.y, u - d.x) / (2 * Math.PI);
+    let px = 128 + 120 * Math.cos(2 * Math.PI * ph);
+    if (((u - 128) / 120) ** 2 + ((v - 144) / 136) ** 2 > 1) px = 255; else px += (Math.random() - .5) * 2 * (amp || 6);
+    img[y * FP_W + x] = Math.max(0, Math.min(255, px));
+  }
+  let bin = ""; for (let i = 0; i < img.length; i += 8192) bin += String.fromCharCode(...img.subarray(i, i + 8192));
+  return btoa(bin);
+}
+
+// ---------------------------------------------------------------- fingerprint template (legacy RAW_V1)
 function fpTemplate(studentNo, finger, wrong, noise) {
   const seedStr = wrong ? "wrong-" + Math.random() : `TAMS-SIM|${studentNo}|${finger}`;
   let h = 2166136261; for (const c of seedStr) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); }
@@ -463,7 +497,7 @@ const t0 = Date.now(); let hbTimer;
 async function heartbeat() {
   const codes = [$("hbKiosk").checked && cfg.station, $("hbRoom").checked && cfg.roomStation].filter(Boolean); let msg = [];
   for (const c of codes) {
-    const r = await api("POST", `/stations/${encodeURIComponent(c)}/heartbeat`, { hw: true, tag: "HB", body: { firmwareVersion: "1.0.3-sim", rssi: -55 - Math.floor(Math.random() * 15), uptimeS: Math.floor((Date.now() - t0) / 1000), freeHeap: 180000 - Math.floor(Math.random() * 5000) } });
+    const r = await api("POST", `/stations/${encodeURIComponent(c)}/heartbeat`, { hw: true, tag: "HB", key: c === cfg.roomStation && c !== cfg.station, body: { firmwareVersion: "1.0.3-sim", rssi: -55 - Math.floor(Math.random() * 15), uptimeS: Math.floor((Date.now() - t0) / 1000), freeHeap: 180000 - Math.floor(Math.random() * 5000) } });
     msg.push(`${c}: ${r.offline ? "blocked" : r.status}`);
   }
   $("hbStatus").textContent = "Last heartbeat " + new Date().toLocaleTimeString() + " " + msg.join(", ");
@@ -569,7 +603,7 @@ async function loadStudents() {
 
 // ---------------------------------------------------------------- room reader + enrollment
 async function roomTap(tag) {
-  const r = await api("POST", `/stations/${encodeURIComponent(cfg.roomStation)}/scans`, { hw: true, tag: "ROOM", body: { tagUid: tag || cfg.roomTagUid } });
+  const r = await api("POST", `/stations/${encodeURIComponent(cfg.roomStation)}/scans`, { hw: true, tag: "ROOM", key: true, body: { tagUid: tag || cfg.roomTagUid } });
   if (r.ok) {
     const good = r.data.signal === "SUCCESS"; $("roomLed").className = "led " + (good ? "green" : "red"); $("roomRes").textContent = `${r.data.result} ${r.data.assetCode || ""}`;
     (good ? SOUNDS.OK : SOUNDS.DENY)(); setTimeout(() => { $("roomLed").className = "led"; }, 2500); refreshLoansSoon();

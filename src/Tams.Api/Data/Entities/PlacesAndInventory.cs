@@ -28,6 +28,8 @@ public class Station
     [MaxLength(80)] public string Name { get; set; } = "";
     [MaxLength(30)] public string? FirmwareVersion { get; set; }
     [MaxLength(45)] public string? IpAddress { get; set; }
+    /// <summary>SHA-256 (hex) of the room station's X-Station-Key; null until a key is issued (TAMS-127). The secret itself is never stored.</summary>
+    [MaxLength(64)] public string? KeyHash { get; set; }
     public DateTimeOffset? LastHeartbeatAt { get; set; }
     public StationHealth Health { get; set; } = StationHealth.Offline;
     public RecordStatus Status { get; set; } = RecordStatus.Active;

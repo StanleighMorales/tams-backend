@@ -5,8 +5,11 @@ namespace Tams.Api.Http;
 public static class ErrorCodes
 {
     public const string AssetNotAvailable = "ASSET_NOT_AVAILABLE";
+    public const string AssetDamaged = "ASSET_DAMAGED";
     public const string StudentBlocked = "STUDENT_BLOCKED";
     public const string InstructorFrozen = "INSTRUCTOR_FROZEN";
+    public const string BorrowerFlagged = "BORROWER_FLAGGED";
+    public const string BorrowerPossibleMatch = "BORROWER_POSSIBLE_MATCH";
     public const string PhotoFailed = "PHOTO_FAILED";
     public const string TagAlreadyAssigned = "TAG_ALREADY_ASSIGNED";
     public const string RestoreConflict = "RESTORE_CONFLICT";

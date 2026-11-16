@@ -67,9 +67,12 @@ Types: `COUNTER_KIOSK`, `ROOM_STATION`. `POST /stations` (201):
 {"stationCode":"KIOSK-1","type":"COUNTER_KIOSK","roomId":"<STORE-1 id>","name":"Counter Kiosk"}
 {"stationCode":"ROOM-101","type":"ROOM_STATION","roomId":"<LAB-101 id>","name":"Lab 1 Reader"}
 ```
+Creating a `ROOM_STATION` also returns `"key"` (64 hex characters) once; later reads show only `"hasKey": true`. Counter kiosks get no key.
 Errors: duplicate `stationCode` 409.
 Others: `GET /stations?type=ROOM_STATION&roomId=<id>`, `GET /stations/health` (counts of online/warning/offline),
-`GET /stations/{id}`, `PUT /stations/{id}` (same shape plus `"status":"ACTIVE"`), `DELETE /stations/{id}`, `POST /stations/{id}/restore`.
+`GET /stations/{id}`, `PUT /stations/{id}` (same shape plus `"status":"ACTIVE"`), `DELETE /stations/{id}`, `POST /stations/{id}/restore`,
+`POST /stations/{id}/rotate-key` (200, new `"key"` once, the old one stops working; ADMIN, TECH_STAFF; 400 `STATION_KEY_NOT_APPLICABLE` for a kiosk, 404 for a deleted station).
+Room-station calls (`POST /stations/{code}/scans` and `/heartbeat`, no JWT) send `X-Station-Key: <key>`. A wrong key gives 403 `STATION_NOT_AUTHENTICATED`; a missing key does too once `station_key_required` is 1 (section 11). In the demo data ROOM-101 has the key `demo-room-101-key`.
 
 ## 5. Authorization cards
 
@@ -100,7 +103,8 @@ Others: `GET /asset-categories?q=lap&sort=name&page=1&pageSize=10`, `GET /asset-
 ## 7. Assets
 
 Types: `BORROWABLE`, `FIXED`. Statuses: `IN_STORAGE`, `AT_COUNTER`, `IN_TRANSIT`, `IN_ROOM_VERIFIED`, `LOCATION_ANOMALY`, `OVERDUE`, `MISSING`, `MAINTENANCE`, `RETIRED`.
-Conditions: `GOOD`, `FAIR`, `DAMAGED`. A BORROWABLE asset needs an `rfidTagUid`.
+Conditions: `GOOD`, `FAIR`, `DAMAGED`. A BORROWABLE asset needs an `rfidTagUid`. The kiosk refuses a `DAMAGED` asset at the tag tap
+(`ASSET_DAMAGED`) in checkout and event batch; to test it, create an extra BORROWABLE asset with `"condition":"DAMAGED"`.
 
 `POST /assets` (201):
 ```json
@@ -180,7 +184,7 @@ Kiosk routes need the header `X-Station-Code: KIOSK-1` and no JWT. A missing or 
 
 A sample base64 template: `ZmFrZS1hczYwOC10ZW1wbGF0ZS0wMDAx` (any base64 text works; the matcher is still a placeholder).
 
-## 11. Settings (read: ADMIN/TECH_STAFF/CUSTODIAN; write: ADMIN)
+## 11. Settings (read: ADMIN/TECH_STAFF/CUSTODIAN; write: ADMIN, and TECH_STAFF for `max_items_per_transaction` only)
 
 | Key | Default | Allowed |
 |---|---|---|
@@ -195,7 +199,9 @@ A sample base64 template: `ZmFrZS1hczYwOC10ZW1wbGF0ZS0wMDAx` (any base64 text wo
 | `station_offline_missed_windows` | 2 | 1 to 10 |
 | `late_arrival_warning_limit` | 3 | from 0 |
 | `marks_before_block` | 2 | 1 to 10 |
+| `max_items_per_transaction` | 1 | 1 to 10 |
 | `enrollment_session_timeout_seconds` | 120 | see `/settings` |
+| `station_key_required` | 0 | 0 or 1 (0 = grace period: room stations without a key still work) |
 
 `GET /settings`, `GET /settings/grace_minutes`, `PUT /settings/grace_minutes` `{"value":20}` (200),
 `{"value":99}` (400), unknown key `PUT /settings/nope` (404),
@@ -216,7 +222,11 @@ Send an explicit offset in `from` and `to`; `entityType` values are lowercase sn
 | INSTRUCTOR | `GET /rooms` | `GET /assets`, `GET /students`, `GET /settings`, `GET /users` |
 | none | `GET /health`, `/auth/login`, `/auth/refresh` | everything else gives 401 |
 
-## 14. Not on `dev` yet
+## 14. Excel checklist and report (TAMS-125)
+
+As ADMIN, with a room that has assets: `GET /api/rooms/{id}/checklist:export?format=xlsx` returns a workbook (columns asset_id, asset_code, name, category, serial_no, found, notes). Type `Y` in `found` for some rows and send it to `POST /api/audits/import` (multipart: `file`, `roomId`); a CSV still works, the format is detected from the file. Then `GET /api/audits/{id}/report?format=xlsx` (sheets Summary and Items), next to `pdf` and `csv`. Any other format is 400; a corrupt workbook is 400 `CSV_MALFORMED`.
+
+## 15. Not on `dev` yet
 
 Kiosk checkout and return, approvals, room scans, loans, anomalies, dashboard, events, inventory audits, notifications,
 violations, `POST /students` and the SignalR hub are on `feature/prd-transaction-core` and have no tickets yet.

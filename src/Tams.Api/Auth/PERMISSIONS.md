@@ -23,22 +23,26 @@ Roles: A = ADMIN, T = TECH_STAFF, C = CUSTODIAN, I = INSTRUCTOR. Routes omit the
 | `GET /users`, `GET /users/{id}` | x | x | | | ADMIN, TECH_STAFF (see Open decisions) |
 | `POST/PUT/DELETE /users`, `/users/{id}/deactivate`, `/activate`, `/reset-password` | x | | | | ADMIN only |
 | `GET /settings`, `GET /settings/{key}` | x | x | x | | ADMIN, TECH_STAFF, CUSTODIAN |
-| `PUT /settings`, `PUT /settings/{key}` | x | | | | ADMIN only |
+| `PUT /settings`, `PUT /settings/{key}` | x | x (one key) | | | ADMIN, except `max_items_per_transaction`, which TECH_STAFF may also set (S1-D2); any other key from TECH_STAFF is 403 `SETTING_ADMIN_ONLY` |
 | `GET /audit-log` | x | | | | ADMIN only (decision #10; read-only, no write routes) |
+| `POST /data-retention/purge-biometrics`, `POST /data-retention/purge-checkout-photos`, `GET /data-retention/purges/{id}/summary` | x | | | | ADMIN only (G5; irreversible, needs `{"confirm":"DELETE"}`, writes an audit_log entry) |
 | `POST /enrollment/sessions`, `GET /enrollment/sessions/{id}`, `POST .../cancel`, `GET/DELETE /students/{id}/fingerprints` | x | x | x | | ADMIN, TECH_STAFF, CUSTODIAN (see Open decisions) |
 | `/kiosk/enrollment/sessions/*`, `/kiosk/{code}/session`, `/kiosk/{code}/sessions`, `/kiosk/sessions/{id}/*` | anon | anon | anon | anon | AllowAnonymous: device traffic. `X-Station-Code` must match the session's counter kiosk, plus the optional IP allowlist (`StationAuth`) |
-| `POST /stations/{code}/scans`, `POST /stations/{code}/heartbeat` | anon | anon | anon | anon | AllowAnonymous: the station named in the path must be live and active, plus the optional IP allowlist (`StationAuth.IsDeviceAllowed`) |
+| `POST /stations/{code}/scans`, `POST /stations/{code}/heartbeat` | anon | anon | anon | anon | AllowAnonymous: the station named in the path must be live and active, plus the optional IP allowlist, plus the room station's `X-Station-Key` (hash compared in constant time; `StationAuth.IsRoomStationAuthenticated`). A missing key is accepted only while `station_key_required` is 0 |
+| `POST /stations/{id}/rotate-key` | x | x | | | ADMIN, TECH_STAFF; returns the new key once |
 | `GET /approvals/pending`, `POST /approvals/{sessionId}/approve`, `/decline` | x | x | x | x | `Policies.AnyUser`; only the card owner of that session may decide, and not while frozen (FR-2.3) |
 | `GET /approvals/{sessionId}/photo` | x | x | x | x | the session's card owner, or ADMIN, TECH_STAFF, CUSTODIAN |
 | `GET /loans`, `GET /loans/{id}`, `GET /loans/{id}/photo`, `GET /anomalies` | x | x | x | x | INSTRUCTOR rows scoped to loans they approved or coordinate (FR-2.5) |
-| `POST /loans/{id}/mark-missing`, `PUT /loans/{id}/room`, `POST /loans/{id}/return`, `POST /anomalies/{id}/acknowledge`, `/resolve` | x | x | | | ADMIN, TECH_STAFF |
+| `POST /loans/{id}/mark-missing`, `PUT /loans/{id}/room`, `POST /loans/{id}/return`, `POST /loans/{id}/void`, `POST /anomalies/{id}/acknowledge`, `/resolve` | x | x | | | ADMIN, TECH_STAFF |
+| `PUT /loans/{id}/borrower`, `PUT /events/{id}/borrower`, `GET /borrowers/check` | x | x | | | ADMIN, TECH_STAFF. Event loan borrower record; a flagged borrower needs a written `overrideReason` (audit log) |
+| `POST /assets/{id}/damage-liability` | x | x | | | ADMIN, TECH_STAFF. Damage is only charged when staff assign it; `PUT /assets/{id}` (condition DAMAGED) returns `lastBorrower` |
 | `GET /dashboard/summary`, `GET /rooms/{id}/occupancy`, `GET /assets/{id}/history` | x | x | x | | ADMIN, TECH_STAFF, CUSTODIAN |
 | `GET /violations`, `GET /students/{id}/standing`, `POST /warnings/{id}/clear`, `/marks/{id}/clear`, `/holds/{id}/lift`, `/freezes/{id}/lift`, `/liabilities/{id}/settle` | x | x | | | ADMIN, TECH_STAFF ("only technical personnel can clear them") |
 | `POST /warnings/reset-term` | x | | | | ADMIN only (FR-6.9 "admin action") |
 | `GET /events`, `GET /events/{id}` | x | x | x | x | INSTRUCTOR sees only events they coordinate |
 | `POST /events`, `PUT /events/{id}`, `POST /events/{id}/close` | x | x | | | ADMIN, TECH_STAFF (FR-5.1) |
-| `GET /rooms/{id}/roster`, `GET /rooms/{id}/checklist:export`, `GET/POST /audits`, `GET /audits/{id}`, `POST /audits/{id}/scans:batch`, `/complete`, `GET /audits/{id}/report` | x | x | x | | ADMIN, TECH_STAFF, CUSTODIAN |
-| `POST /rooms/{id}/roster`, `POST /audits/{id}/sign-off`, `POST /audits/import` | x | x | | | ADMIN, TECH_STAFF |
+| `GET /rooms/{id}/roster`, `GET /rooms/{id}/checklist:export` (csv or xlsx), `GET/POST /audits`, `GET /audits/{id}`, `POST /audits/{id}/scans:batch`, `/complete`, `GET /audits/{id}/report` (pdf, csv or xlsx) | x | x | x | | ADMIN, TECH_STAFF, CUSTODIAN |
+| `POST /rooms/{id}/roster`, `POST /audits/{id}/sign-off`, `POST /audits/import` (csv or xlsx) | x | x | | | ADMIN, TECH_STAFF |
 | `GET /notifications`, `POST /notifications/{id}/read`, `/hubs/live` (SignalR) | x | x | x | x | `Policies.AnyUser`; own notifications only; hub groups: staff, and `user:{id}` for everyone |
 
 `Policies.cs` also defines `Staff`, `AuditStaff`, `StaffOrInstructor`, `InstructorOnly` and `EventCoordinator`

@@ -28,6 +28,16 @@ public class CheckoutSession
     public DateTimeOffset? CompletedAt { get; set; }
 }
 
+/// <summary>An item a checkout session has collected so far (TAMS-121). Held AT_COUNTER until the loans are created or the session ends; deleted when undone.</summary>
+[Table("checkout_session_items")]
+public class CheckoutSessionItem
+{
+    public Guid Id { get; set; }
+    public Guid SessionId { get; set; }
+    public Guid AssetId { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
 [Table("approvals")]
 public class Approval
 {
@@ -53,12 +63,18 @@ public class Loan
     public Guid? ApprovedByUserId { get; set; }
     public Guid? CoordinatorUserId { get; set; }
     public Guid? EventId { get; set; }
+    // Event loans: who staff recorded as the actual borrower (name and ID number from a real ID); the student link is set when they match a roster student.
+    [MaxLength(150)] public string? BorrowerName { get; set; }
+    [MaxLength(40)] public string? BorrowerIdNo { get; set; }
+    public Guid? BorrowerStudentId { get; set; }
     public Guid SessionId { get; set; }
     public Guid? ApprovalId { get; set; }
     public Guid CheckoutStationId { get; set; }
     public Guid? DestinationRoomId { get; set; }
     // PRD: not null for STANDARD loans. Nullable in the schema; the checkout flow enforces it.
     public Guid? PhotoFileId { get; set; }
+    // Set when the retention purge deleted the photo (TAMS-131); satisfies ck_loans_standard_photo.
+    public DateTimeOffset? PhotoPurgedAt { get; set; }
     public LoanStatus Status { get; set; }
     public CustodyState CustodyState { get; set; }
     public DateTimeOffset CheckedOutAt { get; set; }

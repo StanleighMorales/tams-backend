@@ -83,7 +83,7 @@ public static class EventEndpoints
         return Results.Ok(new
         {
             @event = Dto(e, name),
-            loanCounts = new { total = loans.Count, open, returned = loans.Count(l => l.Status == LoanStatus.Returned) },
+            loanCounts = new { total = loans.Count, open, returned = loans.Count(l => l.Status == LoanStatus.Returned), cancelled = loans.Count(l => l.Status == LoanStatus.Cancelled) },
             loans = await LoanEndpoints.DtosAsync(db, loans, ct),
         });
     }

@@ -69,10 +69,14 @@ public class ApprovalFreeze
 public class Liability
 {
     public Guid Id { get; set; }
-    public Guid StudentId { get; set; }
+    // Exactly one of the three liable columns is set (ck_liabilities_one_liable): a student, an account (event coordinator), or a typed name (outside borrower).
+    public Guid? StudentId { get; set; }
+    public Guid? LiableUserId { get; set; }
+    [MaxLength(150)] public string? LiableName { get; set; }
     public Guid LoanId { get; set; }
     public Guid AssetId { get; set; }
     [Column(TypeName = "numeric(12,2)")] public decimal Amount { get; set; }
+    public LiabilityReason Reason { get; set; } = LiabilityReason.Missing;
     public LiabilityStatus Status { get; set; } = LiabilityStatus.Outstanding;
     [MaxLength(40)] public string? ReceiptNo { get; set; }
     public Guid? SettledByUserId { get; set; }

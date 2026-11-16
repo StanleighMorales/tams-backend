@@ -52,7 +52,7 @@ public static class ViolationEndpoints
     /// <summary>The Violations and Resolution screen: students with any penalty, instructors with freezes.</summary>
     static async Task<IResult> Summary(TamsDbContext db, CancellationToken ct)
     {
-        var owing = await db.Liabilities.AsNoTracking().Where(l => l.Status == LiabilityStatus.Outstanding)
+        var owing = await db.Liabilities.AsNoTracking().Where(l => l.Status == LiabilityStatus.Outstanding && l.StudentId != null)
             .GroupBy(l => l.StudentId).Select(g => new { StudentId = g.Key, Amount = g.Sum(x => x.Amount) }).ToListAsync(ct);
         var owingIds = owing.Select(o => o.StudentId).ToList();
         var students = await (
@@ -72,8 +72,19 @@ public static class ViolationEndpoints
             select new { f.Id, f.InstructorUserId, InstructorName = u.FirstName + " " + u.LastName, f.Reason, f.FrozenAt, f.LoanId, l.LoanNo })
             .ToListAsync(ct);
 
+        // Event loans: liabilities owed by a coordinator's account or by a typed outside borrower (PRD-GAPS Q1).
+        var others = await (
+            from x in db.Liabilities.AsNoTracking()
+            where x.Status == LiabilityStatus.Outstanding && x.StudentId == null
+            join l in db.Loans on x.LoanId equals l.Id
+            from u in db.Users.Where(u => u.Id == x.LiableUserId).DefaultIfEmpty()
+            orderby l.LoanNo
+            select new { x.Id, x.LoanId, l.LoanNo, x.Amount, Reason = Support.Label(x.Reason), x.LiableUserId, LiableName = x.LiableName ?? (u.FirstName + " " + u.LastName), l.BorrowerIdNo })
+            .ToListAsync(ct);
+
         return Results.Ok(new
         {
+            otherLiabilities = others,
             students = students.Select(s => new
             {
                 s.Id, s.StudentNo, s.FullName, s.SectionCode, standing = Support.Label(s.Standing), s.ActiveWarningCount,
@@ -131,7 +142,7 @@ public static class ViolationEndpoints
             }),
             liabilities = liabilities.Select(l => new
             {
-                l.Id, l.LoanId, loanNo = loanNos.GetValueOrDefault(l.LoanId), l.AssetId, l.Amount, status = Support.Label(l.Status),
+                l.Id, l.LoanId, loanNo = loanNos.GetValueOrDefault(l.LoanId), l.AssetId, l.Amount, reason = Support.Label(l.Reason), status = Support.Label(l.Status),
                 l.ReceiptNo, l.SettledAt, l.SettledByUserId, l.Notes,
             }),
             openLoans = await LoanEndpoints.DtosAsync(db, open, ct),
@@ -258,7 +269,7 @@ public static class ViolationEndpoints
         LoanRules.Audit(db, "LIABILITY_SETTLED", "liability", l.Id, new { l.Amount, status = Support.Label(status), l.ReceiptNo, l.Notes },
             actor, before, Ip(http));
         await db.SaveChangesAsync(ct);
-        await LoanRules.RecomputeStandingAsync(db, settings, l.StudentId, ct);
+        if (l.StudentId is Guid owner) await LoanRules.RecomputeStandingAsync(db, settings, owner, ct);
         await tx.CommitAsync(ct);
         await UnfrozenAsync(db, hub, freezes, ct);
         return Results.Ok(new

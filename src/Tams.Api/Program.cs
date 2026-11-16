@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Tams.Api.Auth;
 using Tams.Api.Assets;
 using Tams.Api.Auditing;
+using Tams.Api.Common;
 using Tams.Api.Data;
 using Tams.Api.Facilities;
 using Tams.Api.Enrollment;
@@ -18,6 +19,7 @@ using Tams.Api.Kiosk;
 using Tams.Api.Live;
 using Tams.Api.Loans;
 using Tams.Api.Push;
+using Tams.Api.Retention;
 using Tams.Api.Violations;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -46,6 +48,7 @@ builder.Services.AddDbContext<TamsDbContext>(o => o.UseNpgsql(connectionString, 
 builder.Services.AddTamsSettings();
 builder.Services.AddHostedService<EnrollmentSweeper>();
 builder.Services.AddHostedService<LoanSweeper>();
+builder.Services.AddHostedService<Tams.Api.Retention.RetentionSweeper>();
 builder.Services.AddSignalR();
 builder.Services.AddTamsPush(builder.Configuration, builder.Environment);
 
@@ -97,10 +100,13 @@ app.MapQrEndpoints();
 app.MapFacilityEndpoints();
 app.MapSettingsEndpoints();
 app.MapAuditLogEndpoints();
+app.MapRetentionEndpoints();
 app.MapKioskEndpoints();
 app.MapApprovalEndpoints();
 app.MapDeviceEndpoints();
 app.MapLoanEndpoints();
+app.MapBorrowerEndpoints();
+app.MapDamageEndpoints();
 app.MapViolationEndpoints();
 app.MapEventEndpoints();
 app.MapInventoryAuditEndpoints();
@@ -109,12 +115,17 @@ app.MapDeviceTokenEndpoints();
 app.MapHub<LiveHub>("/hubs/live").RequireAuthorization(Policies.AnyUser); // PRD 6.4
 
 // Compose healthcheck polls this, and it is the first thing to check after a deploy.
-app.MapGet("/health", async (TamsDbContext db, ILogger<Program> logger, CancellationToken ct) =>
+app.MapGet("/health", async (TamsDbContext db, IConfiguration cfg, ILogger<Program> logger, CancellationToken ct) =>
 {
     try
     {
         if (await db.Database.CanConnectAsync(ct))
-            return Results.Ok(new { status = "ok", database = "up" });
+        {
+            // Backup state is informational (HTTP stays 200): a failed backup must not take the API out of rotation.
+            return BackupStatus.Read(cfg["Backup:StatusPath"], DateTimeOffset.UtcNow) is { } backup
+                ? Results.Ok(new { status = "ok", database = "up", backup })
+                : Results.Ok(new { status = "ok", database = "up" });
+        }
     }
     catch (Exception ex)
     {

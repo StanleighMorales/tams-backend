@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
 using Tams.Api.Data;
 using Tams.Api.Data.Entities;
@@ -48,6 +49,10 @@ static class SettingKeys
     public const string WarningLimit = "late_arrival_warning_limit";
     public const string MarksBeforeBlock = "marks_before_block";
     public const string MaxActiveLoans = "max_active_loans_per_student";
+    public const string MaxItems = "max_items_per_transaction";
+    public const string StationKeyRequired = "station_key_required";
+    public const string KioskSessionRetentionDays = "kiosk_session_retention_days";
+    public const string NotificationRetentionDays = "notification_retention_days";
 }
 
 /// <summary>
@@ -106,6 +111,71 @@ static class LoanRules
         });
     }
 
+    public sealed record EventInfo(string Title, string Coordinator, IReadOnlyList<OtherItem> OtherItemsOut);
+    public sealed record OtherItem(string AssetCode, string Name, string LoanNo);
+    public sealed record RoomInfo(string Code, string Name);
+    public sealed record StationInfo(string StationCode, string Name);
+
+    /// <summary>TAMS-124: the full details a notice carries (FR-4.3, PRD 6.4). Loan fields are null for an unborrowed tap.</summary>
+    public sealed record NoticeDetails(string AssetCode, string AssetName, RoomInfo? Room, StationInfo? Station, string? LoanNo,
+        string? StudentName, string? StudentNo, string? SectionCode, string? PhotoUrl, EventInfo? Event)
+    {
+        /// <summary>"event Foundation Day (coordinator Ana Cruz)", "Juan Cruz (BSCS-3A)", or "" for no loan.</summary>
+        public string Who => Event is { } e ? $"event {e.Title} (coordinator {e.Coordinator})"
+            : StudentName is null ? "" : $"{StudentName} ({SectionCode})";
+    }
+
+    public static async Task<NoticeDetails> DetailsAsync(TamsDbContext db, Loan? loan, Guid assetId, Guid? roomId,
+        Guid? stationId, CancellationToken ct)
+    {
+        var asset = await db.Assets.AsNoTracking().Where(a => a.Id == assetId).Select(a => new { a.AssetCode, a.Name }).FirstAsync(ct);
+        var room = roomId is null ? null : await db.Rooms.AsNoTracking().Where(r => r.Id == roomId)
+            .Select(r => new RoomInfo(r.Code, r.Name)).FirstOrDefaultAsync(ct);
+        var station = stationId is null ? null : await db.Stations.AsNoTracking().Where(s => s.Id == stationId)
+            .Select(s => new StationInfo(s.StationCode, s.Name)).FirstOrDefaultAsync(ct);
+        if (loan is null) return new(asset.AssetCode, asset.Name, room, station, null, null, null, null, null, null);
+
+        var who = await PartiesAsync(db, loan, ct);
+        EventInfo? evt = null;
+        if (loan.EventId is Guid eventId)
+        {
+            var e = await (from x in db.Events.AsNoTracking() where x.Id == eventId
+                           join u in db.Users on x.CoordinatorUserId equals u.Id
+                           select new { x.Title, Coordinator = u.FirstName + " " + u.LastName }).FirstOrDefaultAsync(ct);
+            var others = await (from l in db.Loans.AsNoTracking()
+                                where l.EventId == eventId && l.Id != loan.Id
+                                    && (l.Status == LoanStatus.Active || l.Status == LoanStatus.Overdue || l.Status == LoanStatus.Missing)
+                                join a in db.Assets on l.AssetId equals a.Id
+                                select new OtherItem(a.AssetCode, a.Name, l.LoanNo)).ToListAsync(ct);
+            evt = new(e?.Title ?? "", e?.Coordinator ?? "", others);
+        }
+        return new(asset.AssetCode, asset.Name, room, station, loan.LoanNo, who.StudentName, who.StudentNo, who.SectionCode,
+            loan.PhotoFileId is null ? null : $"/api/loans/{loan.Id}/photo", evt);
+    }
+
+    /// <summary>The payload with the details added under "details".</summary>
+    public static object With(object payload, NoticeDetails details)
+    {
+        var o = JsonSerializer.SerializeToNode(payload, JsonSerializerOptions.Web)!.AsObject();
+        o["details"] = JsonSerializer.SerializeToNode(details, JsonSerializerOptions.Web);
+        return o;
+    }
+
+    /// <summary>One notification row per active technical-personnel and custodian user (TAMS-124). Caller saves.</summary>
+    public static async Task NotifyStaffAsync(TamsDbContext db, string type, string title, string body, Loan? loan, object payload,
+        DateTimeOffset now, CancellationToken ct)
+    {
+        var staff = await db.Users.AsNoTracking()
+            .Where(u => (u.Role == UserRole.TechStaff || u.Role == UserRole.Custodian) && u.Status == RecordStatus.Active && u.DeletedAt == null)
+            .Select(u => u.Id).ToListAsync(ct);
+        foreach (var id in staff)
+            db.Notifications.Add(new Notification
+            {
+                Id = Guid.NewGuid(), RecipientUserId = id, Type = type, Title = title, Body = body, Payload = Json(payload),
+                LoanId = loan?.Id, StudentId = loan?.StudentId, CreatedAt = now,
+            });
+    }
+
     public static object StatusChanged(Guid assetId, AssetStatus from, AssetStatus to, Guid? roomId) =>
         new { assetId, oldStatus = Support.Label(from), newStatus = Support.Label(to), roomId };
 
@@ -157,8 +227,10 @@ static class LoanRules
 
         LateArrivalWarning? warning = null;
         ApprovalFreeze? freeze = null;
-        // One warning per loan (unique loan_id): a loan re-routed by staff that times out again gets none.
-        if (loan.StudentId is Guid sid && !await db.LateArrivalWarnings.AnyAsync(w => w.LoanId == loan.Id, ct))
+        // One warning per transaction (S1-D1): a loan re-routed by staff that times out again gets none, and neither does a
+        // second item of a multi-item checkout (its loans share the session).
+        if (loan.StudentId is Guid sid
+            && !await db.LateArrivalWarnings.AnyAsync(w => db.Loans.Any(l => l.Id == w.LoanId && l.SessionId == loan.SessionId), ct))
         {
             var limit = await settings.GetIntAsync(SettingKeys.WarningLimit, ct);
             var active = await db.LateArrivalWarnings.CountAsync(w => w.StudentId == sid && w.Status == PenaltyStatus.Active, ct);
@@ -185,16 +257,22 @@ static class LoanRules
         }
 
         var subject = who.StudentName is null ? who.AssetCode : $"{who.StudentName} ({who.SectionCode}), {who.AssetCode}";
+        var details = await DetailsAsync(db, loan, asset.Id, loan.DestinationRoomId, null, ct);
         Notify(db, instructor, "LATE_ARRIVAL_WARNING", "Item not checked in at the room",
             warning is null
                 ? $"{subject} was not tapped at the room within the transit window."
                 : $"{subject} was not tapped at the room in time. Late Arrival Warning #{warning.WarningNo}"
                   + (warning.TriggeredPenalty ? "; a Non-Compliance Mark was issued and your approvals are frozen." : "."),
-            loan, new
+            loan, With(new
             {
                 anomalyId = anomaly.Id, warningNo = warning?.WarningNo, penaltyTriggered = warning?.TriggeredPenalty ?? false,
                 who.StudentName, who.SectionCode, who.AssetCode, loan.LoanNo,
-            }, now);
+            }, details), now);
+        // TAMS-124 (FR-4.3): staff walk over too. One per anomaly: the loan claim above fires once.
+        await NotifyStaffAsync(db, "TRANSIT_TIMEOUT", "Item not checked in at the room",
+            $"{asset.Name} ({asset.AssetCode}), loan {loan.LoanNo}"
+            + (details.Who == "" ? "" : $", {details.Who}") + $", was not tapped at {details.Room?.Code} within the transit window.",
+            loan, With(new { anomalyId = anomaly.Id }, details), now, ct);
 
         await db.SaveChangesAsync(ct);
         if (loan.StudentId is Guid student) await RecomputeStandingAsync(db, settings, student, ct);
@@ -236,13 +314,16 @@ static class LoanRules
         asset.UpdatedAt = now;
 
         ApprovalFreeze? freeze = null;
-        if (loan.StudentId is Guid sid)
+        // Event loans: a borrower linked to a roster student gets the student ladder; the coordinator is frozen.
+        if ((loan.StudentId ?? loan.BorrowerStudentId) is Guid sid)
         {
-            if (!await db.NonComplianceMarks.AnyAsync(m => m.LoanId == loan.Id && m.Reason == PenaltyReason.Overdue, ct))
+            // One mark per transaction (S1-D1): the loans of a multi-item checkout share the session.
+            if (!await db.NonComplianceMarks.AnyAsync(m => m.Reason == PenaltyReason.Overdue
+                    && db.Loans.Any(l => l.Id == m.LoanId && l.SessionId == loan.SessionId), ct))
                 AddMark(db, sid, loan.Id, PenaltyReason.Overdue, now);
             await EnsureHoldAsync(db, sid, loan.Id, now, ct);
         }
-        if (loan.ApprovedByUserId is Guid approver && !await db.ApprovalFreezes.AnyAsync(f =>
+        if (Accountable(loan) is Guid approver && !await db.ApprovalFreezes.AnyAsync(f =>
                 f.LoanId == loan.Id && f.Reason == PenaltyReason.Overdue && f.Status == PenaltyStatus.Active, ct))
             freeze = AddFreeze(db, approver, loan.Id, PenaltyReason.Overdue, now);
         Ledger(db, LedgerEvent.Overdue, loan, now, details: new { loan.DueAt });
@@ -252,10 +333,11 @@ static class LoanRules
         Notify(db, instructor, "LOAN_OVERDUE", "Loan overdue",
             $"{(who.StudentName is null ? "" : $"{who.StudentName} ({who.SectionCode}): ")}{who.AssetCode} {who.AssetName} was due "
             + $"{LocalTime.Clock(loan.DueAt)} and has not been returned." + (freeze is null ? "" : " Your approvals are frozen until staff lift it."),
-            loan, new { loan.LoanNo, who.StudentName, who.SectionCode, who.AssetCode, loan.DueAt }, now);
+            loan, With(new { loan.LoanNo, who.StudentName, who.SectionCode, who.AssetCode, loan.DueAt },
+                await DetailsAsync(db, loan, asset.Id, loan.DestinationRoomId, null, ct)), now);
 
         await db.SaveChangesAsync(ct);
-        if (loan.StudentId is Guid student) await RecomputeStandingAsync(db, settings, student, ct);
+        if ((loan.StudentId ?? loan.BorrowerStudentId) is Guid student) await RecomputeStandingAsync(db, settings, student, ct);
         await tx.CommitAsync(ct);
         db.ChangeTracker.Clear();
 
@@ -289,22 +371,22 @@ static class LoanRules
         asset.UpdatedAt = now;
 
         ApprovalFreeze? freeze = null;
-        // liabilities.student_id is required, so EVENT loans (no student) get none; staff settle those offline.
-        if (loan.StudentId is Guid sid)
+        // Who owes: the student (or the student linked as event borrower), else the typed event borrower,
+        // else the event coordinator (PRD-GAPS Q1). Only a student gets the hold.
+        var sid = loan.StudentId ?? loan.BorrowerStudentId;
+        if (!await db.Liabilities.AnyAsync(x => x.LoanId == loan.Id, ct))
         {
-            if (!await db.Liabilities.AnyAsync(x => x.LoanId == loan.Id, ct))
+            var liability = new Liability
             {
-                var liability = new Liability
-                {
-                    Id = Guid.NewGuid(), StudentId = sid, LoanId = loan.Id, AssetId = asset.Id,
-                    Amount = amount ?? asset.ReplacementCost, Notes = note,
-                };
-                db.Liabilities.Add(liability);
-                Audit(db, "LIABILITY_CREATED", "liability", liability.Id, new { loanId = loan.Id, studentId = sid, liability.Amount }, actor, ip: ip);
-            }
-            await EnsureHoldAsync(db, sid, loan.Id, now, ct);
+                Id = Guid.NewGuid(), LoanId = loan.Id, AssetId = asset.Id, Amount = amount ?? asset.ReplacementCost, Notes = note,
+            };
+            (liability.StudentId, liability.LiableName, liability.LiableUserId) = Liable(loan);
+            db.Liabilities.Add(liability);
+            Audit(db, "LIABILITY_CREATED", "liability", liability.Id,
+                new { loanId = loan.Id, liability.StudentId, liability.LiableName, liability.LiableUserId, liability.Amount }, actor, ip: ip);
         }
-        if (loan.ApprovedByUserId is Guid approver
+        if (sid is Guid holder) await EnsureHoldAsync(db, holder, loan.Id, now, ct);
+        if (Accountable(loan) is Guid approver
             && !await db.ApprovalFreezes.AnyAsync(f => f.LoanId == loan.Id && f.Status == PenaltyStatus.Active, ct))
             freeze = AddFreeze(db, approver, loan.Id, PenaltyReason.Missing, now);
         Ledger(db, LedgerEvent.MarkedMissing, loan, now, actor: actor, details: new { amount = amount ?? asset.ReplacementCost, note });
@@ -314,9 +396,10 @@ static class LoanRules
         var instructor = loan.ApprovedByUserId ?? loan.CoordinatorUserId;
         Notify(db, instructor, "LOAN_MISSING", "Item declared missing",
             $"{(who.StudentName is null ? "" : $"{who.StudentName} ({who.SectionCode}): ")}{who.AssetCode} {who.AssetName} was declared missing by staff.",
-            loan, new { loan.LoanNo, who.StudentName, who.SectionCode, who.AssetCode }, now);
+            loan, With(new { loan.LoanNo, who.StudentName, who.SectionCode, who.AssetCode },
+                await DetailsAsync(db, loan, asset.Id, loan.DestinationRoomId, null, ct)), now);
         await db.SaveChangesAsync(ct);
-        if (loan.StudentId is Guid student) await RecomputeStandingAsync(db, settings, student, ct);
+        if (sid is Guid student) await RecomputeStandingAsync(db, settings, student, ct);
 
         if (freeze is not null) outbox.User(freeze.InstructorUserId, "instructor.frozen", FreezeEvent(freeze, loan, who));
         outbox.Staff("asset.statusChanged", StatusChanged(asset.Id, from, AssetStatus.Missing, asset.CurrentRoomId));
@@ -354,6 +437,35 @@ static class LoanRules
         return loan;
     }
 
+    /// <summary>
+    /// Voids an unopened event loan (TAMS-120): it was lent by mistake. The loan becomes CANCELLED (kept, never deleted), the
+    /// asset goes back to IN_STORAGE and the append-only ledger gets a VOIDED row. "Unopened" means still ACTIVE and not yet
+    /// verified at its venue. Null when the loan is not like that. Caller owns the transaction and writes the audit row.
+    /// </summary>
+    public static async Task<Loan?> VoidAsync(TamsDbContext db, Outbox outbox, Guid loanId, DateTimeOffset now,
+        Guid? stationId, Guid? actorUserId, string? reason, CancellationToken ct)
+    {
+        var claimed = await db.Loans
+            .Where(l => l.Id == loanId && l.Type == LoanType.Event && l.Status == LoanStatus.Active && l.VerifiedAt == null
+                && (l.CustodyState == CustodyState.AwaitingArrival || l.CustodyState == CustodyState.NotRequired))
+            .ExecuteUpdateAsync(u => u.SetProperty(l => l.Status, LoanStatus.Cancelled), ct);
+        if (claimed == 0) return null;
+
+        var loan = await db.Loans.AsNoTracking().FirstAsync(l => l.Id == loanId, ct);
+        var asset = await db.Assets.FirstAsync(a => a.Id == loan.AssetId, ct);
+        var from = asset.Status;
+        asset.Status = AssetStatus.InStorage;
+        asset.CurrentRoomId = asset.HomeRoomId;
+        asset.UpdatedAt = now;
+        Ledger(db, LedgerEvent.Voided, loan, now, stationId, actorUserId, new { reason });
+        Audit(db, "LOAN_VOIDED", "loan", loan.Id, new { loan.LoanNo, reason }, actorUserId, stationId: stationId);
+        await db.SaveChangesAsync(ct);
+
+        outbox.Staff("asset.statusChanged", StatusChanged(asset.Id, from, AssetStatus.InStorage, asset.CurrentRoomId));
+        await OccupancyChangedAsync(db, outbox, loan.DestinationRoomId, now, ct);
+        return loan;
+    }
+
     static NonComplianceMark AddMark(TamsDbContext db, Guid studentId, Guid loanId, PenaltyReason reason, DateTimeOffset now)
     {
         var m = new NonComplianceMark { Id = Guid.NewGuid(), StudentId = studentId, LoanId = loanId, Reason = reason, IssuedAt = now };
@@ -370,7 +482,10 @@ static class LoanRules
         return f;
     }
 
-    /// <summary>FR-6.5: one active hold per loan.</summary>
+    /// <summary>
+    /// FR-6.5: one active hold per loan. The hold stays until technical staff lift it with a reason (FR-6.8),
+    /// even after the item is returned; a return never lifts it.
+    /// </summary>
     static async Task EnsureHoldAsync(TamsDbContext db, Guid studentId, Guid loanId, DateTimeOffset now, CancellationToken ct)
     {
         if (await db.ProfileHolds.AnyAsync(h => h.LoanId == loanId && h.Status == PenaltyStatus.Active, ct)) return;
@@ -378,6 +493,18 @@ static class LoanRules
         db.ProfileHolds.Add(h);
         Audit(db, "HOLD_PLACED", "profile_hold", h.Id, new { studentId, loanId });
     }
+
+    /// <summary>Who owes for a loan (PRD-GAPS Q1): the student (or the student linked as event borrower), else the typed event borrower, else the event coordinator. Exactly one is set.</summary>
+    public static (Guid? StudentId, string? LiableName, Guid? LiableUserId) Liable(Loan loan)
+    {
+        var student = loan.StudentId ?? loan.BorrowerStudentId;
+        return student is not null ? (student, null, null)
+            : loan.BorrowerName is not null ? (null, loan.BorrowerName, null)
+            : (null, null, loan.CoordinatorUserId);
+    }
+
+    /// <summary>The account that answers for a loan: the approving instructor, or the coordinator of an event loan.</summary>
+    static Guid? Accountable(Loan loan) => loan.ApprovedByUserId ?? loan.CoordinatorUserId;
 
     public static Task<bool> IsFrozenAsync(TamsDbContext db, Guid instructorId, CancellationToken ct) =>
         db.ApprovalFreezes.AnyAsync(f => f.InstructorUserId == instructorId && f.Status == PenaltyStatus.Active, ct);
