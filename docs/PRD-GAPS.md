@@ -2,30 +2,30 @@
 
 > **Reminder.** When all the features below are implemented, review this file, `docs/PRD-GAP-LOG.md` and `docs/FLOW.md` before the team meeting where hardware and web confirm the flow. Update the Status lines in the gap log first.
 
-Written 2026-11-15 from a check of the PRD (`../TAMS PRD ...md`), `docs/STATUS.md`, `BACKLOG.md`, the deployment and biometric documents, and the code on `dev`. Estimates are rough and mine, not the team's. Nothing here has a Jira ticket yet.
+Written 2026-11-15 from a check of the PRD (`../TAMS PRD ...md`), `docs/STATUS.md`, `BACKLOG.md`, the deployment and biometric documents, and the code on `dev`. Estimates are rough and mine, not the team's. Updated 2026-11-17 after the backend work was built and merged (see the Status column and "Build notes" below).
 
 ## Work index (single list; details live where noted)
 
-This is the one list of backend work still to do. Each item's tasks are written once, in the file named in the last column. Jira tickets were created 2026-11-15 (TAMS-119 to TAMS-132, all To Do, assigned to Stanleigh). Nothing is built yet. Update the Status column as work lands.
+This is the one list of backend work still to do. Each item's tasks are written once, in the file named in the last column. Jira tickets were created 2026-11-15 (TAMS-119 to TAMS-132, assigned to Stanleigh). As of 2026-11-17 TAMS-119 to 128 are Done in Jira and TAMS-129 to 132 are open with comments on what is left. 325 tests pass on `dev` and a Compose smoke run passed.
 
 | ID | Item | Size | Needs first | Details | Status |
 |---|---|---|---|---|---|
-| E6 | Refuse DAMAGED items at the kiosk; show item name and condition | 0.5 d | none | `PRD-GAP-LOG.md` | To Do, TAMS-119 |
-| E7 | Undo the last tapped item (kiosk Cancel) and web removal of a wrongly lent item | 1 d | none | `PRD-GAP-LOG.md` | To Do, TAMS-120 |
-| E8 | Several items per checkout and return, staff setting (default 1), "Scan item or OK" loop | 3 d | E6, E7 | `PRD-GAP-LOG.md` (gap S1) | To Do, TAMS-121 |
-| E1 | Event borrower record, flag with override reason, coordinator freeze, liability | 2.5 d | none | Part 2, Q1 below | To Do, TAMS-122 |
-| E5 | Damage liability against the last borrower, chosen by staff | 1 d | E1 | Part 2, Q1 below | To Do, TAMS-123 |
-| E4 | Push anomalies, transit timeouts and stations offline to staff, with full details | 1 d | none | Part 2, Q4 below | To Do, TAMS-124 |
-| E3 | Excel export and import for checklists and audit reports | 1 d | none | Part 2, Q3 below | To Do, TAMS-125 |
-| E2 | Reword FR-6.5 (holds stay until staff lift) and tell web | 0.25 d | none | Part 2, Q2 below | To Do, TAMS-126 |
-| G2 | Station credentials for room stations | 1.5 d | none | Part 1 | To Do, TAMS-127 |
-| G1 | Real fingerprint matcher (SourceAFIS on the sensor image, decided) | 4 to 6 d | real captures from TAMS-52 | Part 1 | To Do, TAMS-128 |
-| G4 | Deployment and hardening | 2.5 d | TAMS-19 | Part 1 | To Do, TAMS-129 |
-| G3 | Backups and restore | 1.5 d | G4 | Part 1 | To Do, TAMS-130 |
-| G5 | Data retention and deletion | 2 d | G4 | Part 1 | To Do, TAMS-131 |
-| G6 | Measure NFR-1 to NFR-5 | 1.5 d | G1, G4 | Part 1 | To Do, TAMS-132 |
+| E6 | Refuse DAMAGED items at the kiosk; show item name and condition | 0.5 d | none | `PRD-GAP-LOG.md` | Built, merged PR #15, TAMS-119 Done |
+| E7 | Undo the last tapped item (kiosk Cancel) and web removal of a wrongly lent item | 1 d | none | `PRD-GAP-LOG.md` | Built, merged PR #20, TAMS-120 Done |
+| E8 | Several items per checkout and return, staff setting (default 1), "Scan item or OK" loop | 3 d | E6, E7 | `PRD-GAP-LOG.md` (gap S1) | Built, merged PR #23, TAMS-121 Done |
+| E1 | Event borrower record, flag with override reason, coordinator freeze, liability | 2.5 d | none | Part 2, Q1 below | Built, merged PR #18, TAMS-122 Done |
+| E5 | Damage liability against the last borrower, chosen by staff | 1 d | E1 | Part 2, Q1 below | Built, merged PR #22, TAMS-123 Done |
+| E4 | Push anomalies, transit timeouts and stations offline to staff, with full details | 1 d | none | Part 2, Q4 below | Built, merged PR #13, TAMS-124 Done (real FCM untested) |
+| E3 | Excel export and import for checklists and audit reports | 1 d | none | Part 2, Q3 below | Built, merged PR #12, TAMS-125 Done |
+| E2 | Reword FR-6.5 (holds stay until staff lift) and tell web | 0.25 d | none | Part 2, Q2 below | Built (docs and a test only), merged PR #14, TAMS-126 Done. PRD wording still to change |
+| G2 | Station credentials for room stations | 1.5 d | none | Part 1 | Built, merged PR #19, TAMS-127 Done. Hardware must load the key |
+| G1 | Real fingerprint matcher (SourceAFIS on the sensor image, decided) | 4 to 6 d | real captures from TAMS-52 | Part 1 | Built phases 2 to 4, merged PR #17 and #25, TAMS-128 Done. Phase 1 (real captures, threshold) NOT done |
+| G4 | Deployment and hardening | 2.5 d | TAMS-19 | Part 1 | Repo side merged PR #11. Server, domain, TLS, disk encryption NOT done. TAMS-129 open |
+| G3 | Backups and restore | 1.5 d | G4 | Part 1 | Repo side merged PR #16, local restore drill passed. Bucket, VPS run, real-backup drill NOT done. TAMS-130 open |
+| G5 | Data retention and deletion | 2 d | G4 | Part 1 | Repo side merged PR #21. Real end-of-project purge NOT run. TAMS-131 open |
+| G6 | Measure NFR-1 to NFR-5 | 1.5 d | G1, G4 | Part 1 | Scripts merged PR #24, laptop smoke run only. Official NFR numbers NOT measured. TAMS-132 open |
 
-About 23 to 25 days in all. Suggested order: E6, E7, E8, E1, E5, E4, E3, E2, then G2, G1, G4, G3, G5, G6.
+About 23 to 25 days in all (estimate). Suggested order was: E6, E7, E8, E1, E5, E4, E3, E2, then G2, G1, G4, G3, G5, G6.
 
 **Other open items that already live elsewhere (not repeated here)**
 - `docs/STATUS.md` open decisions #3 (custodian fingerprint rights, FR-9.4 says admin-initiated) and #4 (who can read `/users`).
@@ -34,6 +34,16 @@ About 23 to 25 days in all. Suggested order: E6, E7, E8, E1, E5, E4, E3, E2, the
 - Not backend: the letter to the school (new date, adviser endorsement, region check, fallback for students who do not enroll).
 
 **Already done, so removed from the older `BACKLOG.md`:** push for other notices (TAMS-97, merged), and the smoke test of refresh tokens, roster import and the QR sheet (2026-11-14).
+
+## Build notes (2026-11-17): where the code differs from the plan
+
+- **G1 SourceAFIS.** The kiosk uploads raw 8-bit gray (`image` base64, `width`, `height`, 64 to 1024 pixels a side, 512 KB at most). PNG and JPEG are refused on purpose, because SourceAFIS 3.14.0 pulls in ImageSharp 2.1.3 (known advisories). We pin 2.1.13, the newest Apache-licensed release (3.x and 4.x need a paid licence for Release builds). Five advisories remain in code we never call. The match threshold (`Kiosk:SourceAfisThreshold`, default 40) is a guess until real captures exist. Old `RAW_V1` rows still match through the old path. Hardware TAMS-52 and 53 must send images.
+- **G2 station keys.** The grace period is an on/off setting (`station_key_required`, default 0), not a time window. With it at 0 a station that has a key can still scan without sending it, so the key only protects once the setting is 1. TECH_STAFF can rotate a key.
+- **E7 void.** The void operation covers event loans. A student's undo before the loan exists just removes the item from the session.
+- **E8 items.** TECH_STAFF can edit only `max_items_per_transaction`. Penalties dedupe by transaction (loans sharing the session). A long item code on the confirm screen is cut to fit 20 columns ("3 items +2 more").
+- **E1/E5.** `liabilities.student_id` is now nullable (check: exactly one of student, user or name is set). One liability per loan remains (unique `loan_id`), so a loan already declared missing cannot also get a damage liability (`LIABILITY_EXISTS`); open decision. The flag and override rule applies to event borrowers only.
+- **E4.** Station-offline notices now also reach custodians.
+- **G3/G4/G5/G6.** See the NOT DONE lists in the Jira comments and `docs/STATUS.md`. No NFR is claimed as met.
 
 Two parts:
 

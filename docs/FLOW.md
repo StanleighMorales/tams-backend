@@ -18,7 +18,7 @@ What the PRD specifies, from the counter kiosk to the room and back. Section num
 | 1 | Idle: "TAMS Counter / Tap auth card" | Waiting | | none |
 | 2 | **Instructor's RFID card** tapped | Backend opens a session for that instructor | Card unknown, inactive, lost or revoked; instructor under approval freeze | AWAITING_FINGERPRINT |
 | 3 | **Fingerprint** on the sensor | Backend matches 1:N against enrolled students | Not recognized after 3 tries; student inactive, **blocked** (2 marks) or **on hold**; loan limit reached | AWAITING_ASSET |
-| 4 | **Item tag** tapped | Item is held at the counter, status AT_COUNTER | Unknown tag; not borrowable; status not IN_STORAGE | AWAITING_PHOTO |
+| 4 | **Item tag** tapped | Item is held at the counter, status AT_COUNTER | Unknown tag; not borrowable; status not IN_STORAGE; **condition DAMAGED** (`ASSET_DAMAGED`) | AWAITING_PHOTO |
 | 5 | **Photo** by the counter camera | JPEG uploaded to the session | Photo cannot be captured or uploaded after one retry | AWAITING_APPROVAL |
 | 6 | "Waiting for instructor approval" | Push to the instructor's phone (within 3 s): student name and photo, item, destination room, class length | Instructor declines, or no answer in **120 s** | AWAITING_APPROVAL |
 | 7 | Instructor picks the room and class length (1.5, 2, 2.5 or 3 h) and taps Approve | The kiosk learns the result by 2-second polling | | AWAITING_CONFIRM |
@@ -66,11 +66,11 @@ The borrower walks to the destination room and taps the item on the wall station
 |---|---|---|
 | Correct room, within 10 min | IN_TRANSIT → **IN_ROOM_VERIFIED**, timer stopped | Green LED and chime |
 | Correct room, after 10 min | LOCATION_ANOMALY → IN_ROOM_VERIFIED, anomaly marked "late arrival, resolved"; the warning already issued stays | Green LED and chime |
-| Wrong room | Status unchanged, **WRONG_ROOM** anomaly raised, alert pushed | Red strobe and error tone |
+| Wrong room | Status unchanged, **WRONG_ROOM** anomaly raised, alert pushed to the instructor and to technical staff and custodians | Red strobe and error tone |
 | No active loan for that item | **UNBORROWED_TAP** anomaly logged | Red strobe and error tone |
 | Unknown tag | Scan logged, no state change | Red strobe and error tone |
 
-Every scan, valid or not, is stored (FR-3.3). If the 10 minutes pass with no valid tap, the sweeper (every 15 s) raises **TRANSIT_TIMEOUT**, sets LOCATION_ANOMALY, issues a Late Arrival Warning to the student and notifies the instructor and staff (FR-4.3, FR-6.1).
+Every scan, valid or not, is stored (FR-3.3). If the 10 minutes pass with no valid tap, the sweeper (every 15 s) raises **TRANSIT_TIMEOUT**, sets LOCATION_ANOMALY, issues a Late Arrival Warning to the student and notifies the instructor, technical staff and custodians (FR-4.3, FR-6.1).
 
 ## 3. Returning an item at the counter kiosk (F1, US-03)
 
@@ -116,8 +116,11 @@ Only technical staff clear warnings and marks, lift holds and freezes, and settl
 
 ## 5. Where the code goes beyond or differs from this
 
-- **DAMAGED items can be borrowed** today; neither flow checks condition. Decided to refuse them (gap log, E6).
-- **One item per checkout.** A student cannot borrow several items in one transaction. Decided to make it a staff setting, default 1 (gap S1, E8).
+- **DAMAGED items are refused** at the kiosk in both flows (built, E6). The PRD wording still has to say so.
+- **Several items per checkout** is a staff setting, default 1 (built, E8). With 1 the flow is exactly as written above.
 - **Event batch borrowing (F5)** is a separate flow (instructor or flagged staff as coordinator, no fingerprint, no photo, no approval). See `docs/PRD-GAP-LOG.md`.
-- **Holds** stay until staff lift them, even after a return (FR-6.5 wording to change).
+- **Holds** stay until staff lift them, even after a return (FR-6.5 wording to change; the web violations screen must list returned-but-held students).
+- **Fingerprint** matching is SourceAFIS on a raw sensor image (built, G1). The threshold is provisional until real AS608 captures exist.
+- **Room stations** send a per-station key in `X-Station-Key` (built, G2). It is optional until `station_key_required` is set to 1.
+- **Event loans** record a borrower, flag problems and freeze the coordinator when overdue (built, E1). Staff can void an unopened event loan (built, E7).
 - The PRD names an ESP32-CAM; the deployment decision uses a USB webcam on the counter computer. The API only receives a JPEG, so the flow is unchanged.
