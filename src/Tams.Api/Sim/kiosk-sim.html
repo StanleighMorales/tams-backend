@@ -5,39 +5,93 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>TAMS Kiosk Simulator</title>
 <style>
-:root{--bg:#f4f5f7;--panel:#fff;--ink:#1b1f24;--mute:#5b6570;--line:#d5dae0;--accent:#1f6feb;--ok:#1a7f37;--bad:#cf222e;--warn:#9a6700;--lcd-bg:#0d3b24;--lcd-fg:#9dff9d;--code:#eef0f3}
-@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0f1317;--panel:#171c22;--ink:#e6e9ed;--mute:#98a2ad;--line:#2c343d;--accent:#58a6ff;--ok:#3fb950;--bad:#f85149;--warn:#d29922;--lcd-bg:#06210f;--lcd-fg:#7dff7d;--code:#0f1317}}
-:root[data-theme=dark]{--bg:#0f1317;--panel:#171c22;--ink:#e6e9ed;--mute:#98a2ad;--line:#2c343d;--accent:#58a6ff;--ok:#3fb950;--bad:#f85149;--warn:#d29922;--lcd-bg:#06210f;--lcd-fg:#7dff7d;--code:#0f1317}
+:root{--bg:#f3f5f8;--panel:#fff;--ink:#1b1f24;--mute:#586471;--line:#d5dae0;--accent:#1f6feb;--accent-soft:#e3eeff;--ok:#1a7f37;--ok-soft:#dcf5e3;--bad:#cf222e;--bad-soft:#fde4e6;--warn:#8a5a00;--lcd-bg:#0d3b24;--lcd-fg:#9dff9d;--code:#eef0f3;--shadow:0 1px 2px rgba(20,30,50,.08),0 4px 14px rgba(20,30,50,.06)}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0d1115;--panel:#171c22;--ink:#e6e9ed;--mute:#a1abb6;--line:#2c343d;--accent:#58a6ff;--accent-soft:#16283f;--ok:#3fb950;--ok-soft:#12301b;--bad:#f85149;--bad-soft:#3a1618;--warn:#d29922;--lcd-bg:#06210f;--lcd-fg:#7dff7d;--code:#0f1317;--shadow:0 1px 2px rgba(0,0,0,.4)}}
+:root[data-theme=dark]{--bg:#0d1115;--panel:#171c22;--ink:#e6e9ed;--mute:#a1abb6;--line:#2c343d;--accent:#58a6ff;--accent-soft:#16283f;--ok:#3fb950;--ok-soft:#12301b;--bad:#f85149;--bad-soft:#3a1618;--warn:#d29922;--lcd-bg:#06210f;--lcd-fg:#7dff7d;--code:#0f1317;--shadow:0 1px 2px rgba(0,0,0,.4)}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.4 system-ui,sans-serif}
-header{padding:10px 16px;border-bottom:1px solid var(--line);background:var(--panel);display:flex;flex-wrap:wrap;gap:10px 16px;align-items:end}
-header h1{font-size:17px;margin:0 8px 0 0}
-main{padding:12px 16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:12px;max-width:1700px;margin:auto}
-section{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px;min-width:0}
-section h2{font-size:14px;margin:0 0 2px}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+header{padding:10px 16px;border-bottom:1px solid var(--line);background:var(--panel);display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center}
+header h1{font-size:18px;margin:0 8px 0 0}
+header .sub{color:var(--mute);font-size:13px;flex-basis:100%;margin:0}
+nav.tabs{display:flex;gap:4px;flex-wrap:wrap}
+nav.tabs a{padding:6px 12px;border-radius:99px;color:var(--ink);text-decoration:none;border:1px solid var(--line);font-size:13px}
+nav.tabs a:hover{border-color:var(--accent)}
+nav.tabs a.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto}
+.chip{display:inline-flex;flex-direction:row;align-items:center;gap:6px;border:1px solid var(--line);border-radius:99px;padding:5px 12px;font-size:13px;cursor:pointer;min-height:34px;color:var(--ink)}
+.chip:has(input:checked){background:var(--accent-soft);border-color:var(--accent)}
+details.settings{flex-basis:100%}
+details.settings summary{cursor:pointer;color:var(--mute);font-size:13px}
+details.settings .row{margin-top:8px}
+main{padding:14px 16px 40px;display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:14px;max-width:1500px;margin:auto}
+section{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;min-width:0;grid-column:span 12;box-shadow:var(--shadow)}
+@media (min-width:900px){section{grid-column:span 6}}
+@media (min-width:1200px){section{grid-column:span 4}section.span2{grid-column:span 8}}
+section.wide{grid-column:1/-1}
+section h2{font-size:15px;margin:0 0 2px}
 section h2 small{font-weight:400;color:var(--mute)}
-.wide{grid-column:1/-1}
-label{display:flex;flex-direction:column;font-size:12px;color:var(--mute);gap:2px}
+.who{display:inline-block;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--accent);background:var(--accent-soft);border-radius:99px;padding:1px 9px;margin-bottom:4px}
+label{display:flex;flex-direction:column;font-size:12px;color:var(--mute);gap:3px}
 label.inline{flex-direction:row;align-items:center;gap:6px}
-input,select,button,textarea{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:5px 8px;min-width:0}
-input[type=checkbox]{padding:0}
-input[type=range]{padding:0}
-button{cursor:pointer;background:var(--code)}
-button:hover{border-color:var(--accent)}
-button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+input,select,button,textarea{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:7px 10px;min-width:0;min-height:38px}
+input[type=checkbox]{padding:0;min-height:0;width:16px;height:16px}
+input[type=range]{padding:0;min-height:0}
+button{cursor:pointer;background:var(--code);transition:background .15s,border-color .15s,transform .1s;touch-action:manipulation}
+button:hover:not(:disabled){border-color:var(--accent)}
+button:active:not(:disabled){transform:scale(.98)}
+button.primary{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600}
 button.danger{color:var(--bad)}
 button:disabled{opacity:.5;cursor:not-allowed}
-:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
-.row{display:flex;flex-wrap:wrap;gap:8px;align-items:end;margin:6px 0}
-.hint{color:var(--mute);font-size:12px;margin:4px 0}
-.lcd{background:var(--lcd-bg);color:var(--lcd-fg);font:18px/1.25 ui-monospace,Consolas,monospace;padding:10px 12px;border-radius:6px;border:3px solid #333;white-space:pre;overflow:hidden;letter-spacing:.5px}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:end;margin:8px 0}
+.hint{color:var(--mute);font-size:13px;margin:4px 0}
+code{background:var(--code);padding:0 4px;border-radius:4px;font-size:12px}
+details.more{margin-top:8px;border-top:1px dashed var(--line);padding-top:6px}
+details.more>summary{cursor:pointer;color:var(--mute);font-size:13px;padding:4px 0}
+details.more[open]>summary{color:var(--ink)}
+/* start here */
+.start{border:2px solid var(--accent);background:linear-gradient(180deg,var(--accent-soft),var(--panel) 70%)}
+.start h2{font-size:18px}
+.feat{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:10px;margin:10px 0}
+button.big{min-height:64px;text-align:left;display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:10px 14px;font-size:16px}
+button.big small{font-weight:400;font-size:12px;opacity:.9}
+button.big:not(.primary){background:var(--panel);border:2px solid var(--accent)}
+.grp{font-size:12px;font-weight:600;color:var(--mute);text-transform:uppercase;letter-spacing:.04em;margin:12px 0 6px}
+.scen{display:flex;flex-wrap:wrap;gap:6px}
+.result{margin-top:10px;padding:8px 12px;border-radius:8px;border:1px solid var(--line);background:var(--code);font-size:14px;min-height:38px}
+.result.run{border-color:var(--accent);background:var(--accent-soft)}
+.result.ok{border-color:var(--ok);background:var(--ok-soft);color:var(--ok);font-weight:600}
+.result.bad{border-color:var(--bad);background:var(--bad-soft);color:var(--bad);font-weight:600}
+body.running #scenBox button{opacity:.55;cursor:progress}
+/* stepper */
+.steps{list-style:none;margin:10px 0;padding:0;display:flex;flex-wrap:wrap;gap:6px;counter-reset:s}
+.steps li{counter-increment:s;display:flex;align-items:center;gap:8px;padding:6px 12px 6px 6px;border-radius:99px;border:1px solid var(--line);color:var(--mute);font-size:13px;background:var(--panel)}
+.steps li::before{content:counter(s);display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--code);font-size:12px;font-weight:700;color:var(--mute)}
+.steps li.done{color:var(--ok);border-color:var(--ok)}
+.steps li.done::before{content:"\2713";background:var(--ok);color:#fff}
+.steps li.now{color:var(--ink);border-color:var(--accent);background:var(--accent-soft);font-weight:600}
+.steps li.now::before{background:var(--accent);color:#fff}
+.steps li.bad{color:var(--bad);border-color:var(--bad);background:var(--bad-soft);font-weight:600}
+.steps li.bad::before{content:"!";background:var(--bad);color:#fff}
+.coach{margin:6px 0 0;font-size:15px;font-weight:600}
+@media (prefers-reduced-motion:no-preference){
+  button.next{animation:pulse 1.4s ease-in-out infinite}
+  @keyframes pulse{50%{box-shadow:0 0 0 6px color-mix(in srgb,var(--accent) 30%,transparent)}}
+}
+button.next{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 35%,transparent)}
+/* devices */
+.lcd{background:var(--lcd-bg);color:var(--lcd-fg);font:20px/1.3 ui-monospace,Consolas,monospace;padding:14px 16px;border-radius:8px;border:6px solid #2b2f33;box-shadow:inset 0 0 12px rgba(0,0,0,.6);white-space:pre;overflow:hidden;letter-spacing:.5px}
 .lcd.off{opacity:.35}
-.pill{display:inline-block;border-radius:99px;padding:1px 8px;font-size:12px;background:var(--code);border:1px solid var(--line)}
+.pill{display:inline-block;border-radius:99px;padding:2px 10px;font-size:12px;background:var(--code);border:1px solid var(--line)}
 .pill.ok{color:var(--ok)}.pill.bad{color:var(--bad)}.pill.warn{color:var(--warn)}
-.led{display:inline-block;width:14px;height:14px;border-radius:50%;background:var(--line);vertical-align:middle}
-.led.green{background:#2ea043;box-shadow:0 0 8px #2ea043}.led.red{background:#f85149;box-shadow:0 0 8px #f85149}
-table{border-collapse:collapse;width:100%;font-size:12px}
-th,td{border-bottom:1px solid var(--line);padding:3px 6px;text-align:left;white-space:nowrap}
+.led{display:inline-block;width:16px;height:16px;border-radius:50%;background:var(--line);vertical-align:middle}
+.led.green{background:#2ea043;box-shadow:0 0 10px #2ea043}.led.red{background:#f85149;box-shadow:0 0 10px #f85149}
+.kgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:16px}
+.phone{border-radius:22px;border:4px solid #2b2f33}
+.phone h2{text-align:center}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{border-bottom:1px solid var(--line);padding:5px 8px;text-align:left;white-space:nowrap}
 .scroll{overflow:auto;max-height:260px}
 tr.click{cursor:pointer}tr.click:hover{background:var(--code)}
 pre{background:var(--code);padding:6px 8px;border-radius:6px;overflow:auto;max-height:220px;margin:6px 0;font-size:12px}
@@ -45,120 +99,67 @@ pre{background:var(--code);padding:6px 8px;border-radius:6px;overflow:auto;max-h
 #log div{border-bottom:1px solid var(--line);padding:2px 0}
 #log .s2{color:var(--ok)}#log .s4,#log .s5,#log .s0{color:var(--bad)}#log .note{color:var(--accent)}#log .poll{opacity:.55}
 body:not(.showpolls) #log .poll{display:none}
-video,canvas.cam{width:100%;max-width:240px;background:#000;border-radius:6px;display:block}
-.card{border:1px solid var(--line);border-radius:6px;padding:6px 8px;margin:6px 0}
-.scen{display:flex;flex-wrap:wrap;gap:6px}
-nav a{color:var(--accent)}nav a.on{font-weight:700;text-decoration:none;color:var(--ink)}
+video,canvas.cam{width:100%;max-width:240px;background:#000;border-radius:8px;display:block}
+.card{border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:8px 0}
 </style>
 </head>
 <body>
 <header>
   <h1 id="title">TAMS Kiosk Simulator</h1>
-  <nav aria-label="Device pages" class="row" style="margin:0"><a href="?">All</a> <a href="?device=kiosk">Kiosk</a> <a href="?device=room">Room reader</a> <a href="?device=phone">Phone</a> <a href="?device=admin">Admin</a></nav>
-  <label>API base URL<input id="base" size="22" autocomplete="off"></label>
-  <label>Counter kiosk <small>station_code</small><input id="station" size="10" autocomplete="off"></label>
-  <label>Room reader <small>station_code</small><input id="roomStation" size="10" autocomplete="off"></label>
-  <label>Room reader <small>X-Station-Key</small><input id="roomKey" size="14" autocomplete="off"></label>
-  <label class="inline"><input type="checkbox" id="wifi" checked> Wi-Fi on</label>
-  <label class="inline"><input type="checkbox" id="mute"> Mute buzzer</label>
-  <label class="inline"><input type="checkbox" id="showPolls"> Show polls in log</label>
-  <span class="hint">Simulates hardware only: the backend is real. Every call is in the log.</span>
+  <nav class="tabs" aria-label="Device pages"><a href="?">All devices</a> <a href="?device=kiosk">Kiosk</a> <a href="?device=room">Room reader</a> <a href="?device=phone">Phone</a> <a href="?device=admin">Admin</a></nav>
+  <div class="chips">
+    <label class="chip"><input type="checkbox" id="wifi" checked> Wi-Fi on</label>
+    <label class="chip"><input type="checkbox" id="mute"> Mute buzzer</label>
+  </div>
+  <p class="sub">Simulates the hardware only. The backend is the real API and every call shows in the event log.</p>
+  <details class="settings"><summary>Connection settings</summary>
+    <div class="row">
+      <label>API base URL<input id="base" size="22" autocomplete="off"></label>
+      <label>Counter kiosk <small>station_code</small><input id="station" size="10" autocomplete="off"></label>
+      <label>Room reader <small>station_code</small><input id="roomStation" size="10" autocomplete="off"></label>
+      <label>Room reader <small>X-Station-Key</small><input id="roomKey" size="14" autocomplete="off"></label>
+      <label class="inline"><input type="checkbox" id="showPolls"> Show polls in log</label>
+    </div>
+  </details>
 </header>
 <main>
 
-<section aria-labelledby="h-net" data-dev="kiosk room">
-  <h2 id="h-net">Network and heartbeat <small>ESP32 Wi-Fi, FR-8.1</small></h2>
-  <div class="row">
-    <label>Interval (s)<input id="hbInterval" type="number" min="1" max="600" value="30" style="width:80px"></label>
-    <label>Jitter +/- (s)<input id="hbJitter" type="number" min="0" max="30" value="2" style="width:80px"></label>
-    <label class="inline"><input type="checkbox" id="hbKiosk" checked> kiosk</label>
-    <label class="inline"><input type="checkbox" id="hbRoom" checked> room reader</label>
-    <button id="hbNow">Send now</button>
+<section class="wide start" aria-labelledby="h-scen">
+  <button id="resetDb" class="danger" style="float:right" title="Drops the database and seeds it again (development only)">Reset database</button>
+  <h2 id="h-scen">Start here: run a whole flow with one click</h2>
+  <div class="hint">The simulator taps, scans, approves and confirms for you across every device below. Watch the steps light up.</div>
+  <div id="scenBox">
+    <div class="feat" id="scenFeat"></div>
+    <div class="grp">Denied cases (the API should refuse these)</div>
+    <div class="scen" id="scenDenied"></div>
+    <div class="grp">Staff and hardware</div>
+    <div class="scen" id="scenMore"></div>
   </div>
-  <div class="row">
-    <label>Latency (ms)<input id="latency" type="number" min="0" max="10000" value="0" style="width:80px"></label>
-    <label>Packet loss (%)<input id="loss" type="number" min="0" max="100" value="0" style="width:80px"></label>
-    <label>HTTP timeout (s)<input id="timeout" type="number" min="1" max="60" value="5" style="width:80px"></label>
-  </div>
-  <div class="hint">Hardware calls only. Use these to test the firmware's retry and timeout handling: a dropped or timed-out request shows in the log and on the LCD, as a lost ESP32 request would.</div>
-  <div class="hint" id="hbStatus">Heartbeats start with the page.</div>
-  <div class="hint">Wi-Fi off stops polling and heartbeats. The station goes Warning then Offline within a few windows (US-15). Station health (needs a staff login below):</div>
-  <div id="health" class="hint">-</div>
+  <div id="scStatus" class="result" role="status" aria-live="polite">Pick a flow to run.</div>
+  <details class="more"><summary>Scenario options</summary>
+    <div class="row">
+      <label>Phone destination room<select id="scRoom"><option value="">first non-storage room</option></select></label>
+      <label>Class length (h)<select id="scLen"><option value="90">1.5</option><option value="120">2</option><option value="150">2.5</option><option value="180">3</option></select></label>
+    </div>
+    <div class="hint">Scenarios use the card, tag and student fields in the panels below and the two demo logins. Staff login also enrolls the student if needed.</div>
+  </details>
 </section>
 
-<section aria-labelledby="h-pn" data-dev="kiosk">
-  <h2 id="h-pn">PN532 reader <small>cards and item tags</small></h2>
-  <div class="row">
-    <label>Auth card<select id="cardSel">
-      <option value="04A1B2C3">Instructor Ina (04A1B2C3)</option>
-      <option value="DEADBEEF">Unknown card (DEADBEEF)</option>
-      <option value="">Custom UID...</option></select></label>
-    <label>Card UID<input id="cardUid" size="12" value="04A1B2C3" autocomplete="off"></label>
-    <button id="tapCard" class="primary">Tap card (start CHECKOUT)</button>
-  </div>
-  <div class="row">
-    <button id="startReturn">Start RETURN (no card)</button>
-  </div>
-  <div class="row">
-    <label>Item tag<select id="tagSel">
-      <option value="E2000017221101441890">LT-001 Dell Latitude</option>
-      <option value="04A1B2C3D4E5F6">LT-002 ThinkPad</option>
-      <option value="0000DEAD0000">Unknown tag</option>
-      <option value="">Custom UID...</option></select></label>
-    <label>Tag UID<input id="tagUid" size="22" value="E2000017221101441890" autocomplete="off"></label>
-  </div>
-  <div class="row">
-    <button id="tapTag" class="primary">Tap tag on kiosk (ASSET)</button>
-  </div>
+<section class="wide" aria-labelledby="h-flow" data-dev="kiosk room">
+  <h2 id="h-flow">Where are we in the flow?</h2>
+  <ol id="steps" class="steps" aria-label="Borrow flow progress"></ol>
+  <p id="coach" class="coach" role="status" aria-live="polite"></p>
 </section>
 
-<section aria-labelledby="h-room" data-dev="room">
-  <h2 id="h-room">Room reader <small>room station: PN532, LED, buzzer (F3)</small></h2>
-  <div class="row">
-    <label>Item tag<select id="roomTagSel">
-      <option value="E2000017221101441890">LT-001 Dell Latitude</option>
-      <option value="04A1B2C3D4E5F6">LT-002 ThinkPad</option>
-      <option value="0000DEAD0000">Unknown tag</option>
-      <option value="">Custom UID...</option></select></label>
-    <label>Tag UID<input id="roomTagUid" size="22" value="E2000017221101441890" autocomplete="off"></label>
-  </div>
-  <div class="row">
-    <button id="tapRoom" class="primary">Tap tag at room door</button>
-    <span>LED <span class="led" id="roomLed" role="img" aria-label="room LED"></span> <span id="roomRes" class="hint"></span></span>
-  </div>
-  <div class="hint">Posts <code>POST /stations/{code}/scans</code> for the room reader's station code in the header. Green LED and chime for SUCCESS, red and a low tone for ERROR (FR-3.2).</div>
-</section>
-
-<section aria-labelledby="h-fp" data-dev="kiosk">
-  <h2 id="h-fp">AS608 fingerprint <small>FR-1.3</small></h2>
-  <div class="row">
-    <label>Student no.<input id="studentNo" list="studentList" size="12" value="2024-0001" autocomplete="off"></label>
-    <datalist id="studentList"><option value="2024-0001"><option value="2024-0002"><option value="2024-0003"><option value="2024-0004"></datalist>
-    <label>Finger index (0-9)<input id="fingerIdx" type="number" min="0" max="9" value="1" style="width:70px"></label>
-  </div>
-  <div class="row">
-    <label>Noise (bytes flipped): <output id="noiseOut">0</output><input id="noise" type="range" min="0" max="256" value="0"></label>
-    <label class="inline"><input type="checkbox" id="wrongFinger"> Wrong finger (random finger)</label>
-    <label class="inline"><input type="checkbox" id="sendImage" checked> Send sensor image (SourceAFIS)</label>
-  </div>
-  <div class="row">
-    <button id="finger" class="primary">Place finger</button>
-  </div>
-  <div class="hint">Default: the kiosk uploads the sensor <b>image</b> (TAMS-128): 256x288 raw 8-bit gray, base64, with <code>width</code> and <code>height</code>. The API builds a SourceAFIS template in memory, matches it 1:N against enrolled fingers, stores only the encrypted template and discards the image. The image here is a synthetic ridge pattern derived from student no. + finger index; Noise adds pixel noise and a small shift per scan. A match needs a SourceAFIS score of at least <code>Kiosk:SourceAfisThreshold</code> (provisional default 40, not calibrated on real AS608 captures). Untick "Send sensor image" for the legacy 512-byte template (<code>Kiosk:MatchThreshold</code>, Hamming distance, made-up bytes). Fingers enrolled one way only match the same way; delete and re-enroll to switch. The student must be enrolled first (Enrollment below, or a scenario does it).</div>
-  <div class="row">
-    <button id="enroll">Enrollment mode: start on kiosk (needs staff login)</button>
-  </div>
-  <div class="hint">Staff starts a session, the kiosk idle poll picks it up, then Place finger and OK (confirm).</div>
-</section>
-
-<section class="wide" aria-labelledby="h-kiosk" data-dev="kiosk">
-  <h2 id="h-kiosk">Counter kiosk <small>LCD2004, buttons, buzzer, webcam</small></h2>
-  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:14px">
+<section class="span2" aria-labelledby="h-kiosk" data-dev="kiosk">
+  <span class="who">Student side</span>
+  <h2 id="h-kiosk">Counter kiosk <small>LCD, buttons, buzzer, webcam</small></h2>
+  <div class="kgrid">
     <div>
       <div class="lcd" id="lcd" role="status" aria-live="polite" aria-label="LCD 4 by 20"></div>
       <div class="row">
         <span class="pill" id="stat">idle</span>
-        <span>nextStep: <b id="next">-</b></span>
+        <span class="hint">next step: <b id="next">-</b></span>
         <span class="hint" id="fail"></span>
       </div>
       <div class="row">
@@ -172,59 +173,161 @@ nav a{color:var(--accent)}nav a.on{font-weight:700;text-decoration:none;color:va
       <video id="video" autoplay muted playsinline hidden></video>
       <canvas id="cam" class="cam" width="320" height="240" aria-label="Webcam preview"></canvas>
       <div class="row">
-        <button id="camStart">Use real camera</button>
-        <label class="inline"><input type="checkbox" id="autoPhoto" checked> Auto capture on PHOTO step</label>
-        <label class="inline"><input type="checkbox" id="camFault"> Camera error</label>
         <button id="shoot">Capture now</button>
+        <label class="inline"><input type="checkbox" id="autoPhoto" checked> Auto capture on PHOTO step</label>
       </div>
-      <div class="hint">Camera error: the kiosk retries once, then reports failure (no file) and the API denies with PHOTO_FAILED.</div>
+      <details class="more"><summary>Camera options</summary>
+        <div class="row">
+          <button id="camStart">Use real camera</button>
+          <label class="inline"><input type="checkbox" id="camFault"> Simulate camera error</label>
+        </div>
+        <div class="hint">Camera error: the kiosk retries once, then reports failure (no file) and the API denies with PHOTO_FAILED.</div>
+      </details>
     </div>
   </div>
 </section>
 
-<section aria-labelledby="h-phone" data-dev="phone">
-  <h2 id="h-phone">Instructor phone <small>F2 approval</small></h2>
+<section aria-labelledby="h-pn" data-dev="kiosk">
+  <span class="who">Student side</span>
+  <h2 id="h-pn">Card and tag reader <small>PN532</small></h2>
   <div class="row">
-    <label>Email<input id="phEmail" size="20" autocomplete="off"></label>
-    <label>Password<input id="phPw" type="password" size="12" autocomplete="off"></label>
-    <button id="phLogin" class="primary">Log in</button>
+    <label>Auth card<select id="cardSel">
+      <option value="04A1B2C3">Instructor Ina (04A1B2C3)</option>
+      <option value="04A1B2C4">Instructor Ian (04A1B2C4)</option>
+      <option value="04A1B2C5">Instructor Iris (04A1B2C5)</option>
+      <option value="DEADBEEF">Unknown card (DEADBEEF)</option>
+      <option value="">Custom UID...</option></select></label>
+    <button id="tapCard" class="primary">Tap card (start CHECKOUT)</button>
   </div>
-  <div class="hint">Live: <span class="pill" id="phLive">offline</span> <span id="phWho"></span></div>
+  <div class="row">
+    <label>Item tag<select id="tagSel">
+      <option value="E2000017221101441890">LT-001 Dell Latitude</option>
+      <option value="04A1B2C3D4E5F6">LT-002 ThinkPad</option>
+      <option value="0000DEAD0000">Unknown tag</option>
+      <option value="">Custom UID...</option></select></label>
+    <button id="tapTag" class="primary">Tap tag on kiosk (ASSET)</button>
+  </div>
+  <div class="row"><button id="startReturn">Start RETURN (no card)</button></div>
+  <details class="more"><summary>Custom UIDs</summary>
+    <div class="row">
+      <label>Card UID<input id="cardUid" size="12" value="04A1B2C3" autocomplete="off"></label>
+      <label>Tag UID<input id="tagUid" size="22" value="E2000017221101441890" autocomplete="off"></label>
+    </div>
+  </details>
+</section>
+
+<section aria-labelledby="h-fp" data-dev="kiosk">
+  <span class="who">Student side</span>
+  <h2 id="h-fp">Fingerprint reader <small>AS608, FR-1.3</small></h2>
+  <div class="row">
+    <label>Student no.<input id="studentNo" list="studentList" size="12" value="2024-0001" autocomplete="off"></label>
+    <datalist id="studentList"><option value="2024-0001"><option value="2024-0002"><option value="2024-0003"><option value="2024-0004"></datalist>
+    <button id="finger" class="primary">Place finger</button>
+  </div>
+  <details class="more"><summary>Fingerprint options and enrollment</summary>
+    <div class="row">
+      <label>Finger index (0-9)<input id="fingerIdx" type="number" min="0" max="9" value="1" style="width:70px"></label>
+      <label>Noise (bytes flipped): <output id="noiseOut">0</output><input id="noise" type="range" min="0" max="256" value="0"></label>
+    </div>
+    <div class="row">
+      <label class="inline"><input type="checkbox" id="wrongFinger"> Wrong finger (random finger)</label>
+      <label class="inline"><input type="checkbox" id="sendImage" checked> Send sensor image (SourceAFIS)</label>
+    </div>
+    <div class="row"><button id="enroll">Enrollment mode: start on kiosk (needs staff login)</button></div>
+    <div class="hint">Staff starts a session, the kiosk idle poll picks it up, then Place finger and OK (confirm). The student must be enrolled first (a scenario does it for you).</div>
+    <details class="more"><summary>How matching works</summary>
+      <div class="hint">Default: the kiosk uploads the sensor <b>image</b> (TAMS-128): 256x288 raw 8-bit gray, base64, with <code>width</code> and <code>height</code>. The API builds a SourceAFIS template in memory, matches it 1:N against enrolled fingers, stores only the encrypted template and discards the image. The image here is a synthetic ridge pattern derived from student no. + finger index; Noise adds pixel noise and a small shift per scan. A match needs a SourceAFIS score of at least <code>Kiosk:SourceAfisThreshold</code> (provisional default 40, not calibrated on real AS608 captures). Untick "Send sensor image" for the legacy 512-byte template (<code>Kiosk:MatchThreshold</code>, Hamming distance, made-up bytes). Fingers enrolled one way only match the same way; delete and re-enroll to switch.</div>
+    </details>
+  </details>
+</section>
+
+<section aria-labelledby="h-room" data-dev="room">
+  <span class="who">Room door</span>
+  <h2 id="h-room">Room reader <small>PN532, LED, buzzer (F3)</small></h2>
+  <div class="row">
+    <label>Item tag<select id="roomTagSel">
+      <option value="E2000017221101441890">LT-001 Dell Latitude</option>
+      <option value="04A1B2C3D4E5F6">LT-002 ThinkPad</option>
+      <option value="0000DEAD0000">Unknown tag</option>
+      <option value="">Custom UID...</option></select></label>
+    <button id="tapRoom" class="primary">Tap tag at room door</button>
+    <span>LED <span class="led" id="roomLed" role="img" aria-label="room LED"></span> <span id="roomRes" class="hint"></span></span>
+  </div>
+  <details class="more"><summary>Custom UID and details</summary>
+    <div class="row"><label>Tag UID<input id="roomTagUid" size="22" value="E2000017221101441890" autocomplete="off"></label></div>
+    <div class="hint">Posts <code>POST /stations/{code}/scans</code> for the room reader's station code. Green LED and chime for SUCCESS, red and a low tone for ERROR (FR-3.2).</div>
+  </details>
+</section>
+
+<section class="phone" aria-labelledby="h-phone" data-dev="phone">
+  <span class="who">Instructor side</span>
+  <h2 id="h-phone">Instructor phone <small>F2 approval</small></h2>
+  <label>Switch teacher<select id="phAcct"></select></label>
+  <div class="hint">Signed in as <b id="phWho">...</b> &middot; live <span class="pill" id="phLive">offline</span></div>
   <div id="phFreeze" class="hint"></div>
   <div id="pending"></div>
-  <b>Live events</b>
-  <div id="events" class="scroll hint"></div>
+  <details class="more"><summary>Account and live events</summary>
+    <div class="row">
+      <label>Email<input id="phEmail" size="20" autocomplete="off"></label>
+      <label>Password<input id="phPw" type="password" size="12" autocomplete="off"></label>
+      <button id="phLogin" class="primary">Log in</button>
+    </div>
+    <b>Live events</b>
+    <div id="events" class="scroll hint"></div>
+  </details>
 </section>
 
-<section aria-labelledby="h-staff" data-dev="admin">
+<section class="wide" aria-labelledby="h-staff" data-dev="admin">
+  <span class="who">Staff side</span>
   <h2 id="h-staff">Admin and loans <small>GET /loans</small></h2>
   <div class="row">
-    <label>Email<input id="stEmail" size="20" autocomplete="off"></label>
-    <label>Password<input id="stPw" type="password" size="12" autocomplete="off"></label>
-    <button id="stLogin" class="primary">Log in</button>
+    <label>Switch staff account<select id="stAcct"></select></label>
+    <span class="hint">Signed in as <b id="stWho">...</b></span>
     <button id="loansRefresh">Refresh loans</button>
-    <label class="inline"><input type="checkbox" id="loansAuto" checked> auto</label>
+    <label class="inline"><input type="checkbox" id="loansAuto" checked> auto refresh</label>
   </div>
-  <div class="hint">Admin, tech or custodian. <span id="stWho"></span> Click a row for loan detail.</div>
+  <div class="hint">Click a row for loan detail.</div>
   <div class="scroll"><table id="loans" aria-label="Loans"><thead><tr><th>Loan</th><th>Asset</th><th>Student</th><th>Status</th><th>Custody</th><th>Room</th><th>Due</th></tr></thead><tbody></tbody></table></div>
   <pre id="loanDetail" hidden></pre>
+  <details class="more"><summary>Account</summary>
+    <div class="row">
+      <label>Email<input id="stEmail" size="20" autocomplete="off"></label>
+      <label>Password<input id="stPw" type="password" size="12" autocomplete="off"></label>
+      <button id="stLogin" class="primary">Log in</button>
+    </div>
+    <div class="hint">Admin, tech or custodian.</div>
+  </details>
 </section>
 
-<section class="wide" aria-labelledby="h-scen">
-  <h2 id="h-scen">Scenarios <small>drive the panels above automatically</small></h2>
-  <div class="row">
-    <label>Phone destination room<select id="scRoom"><option value="">first non-storage room</option></select></label>
-    <label>Class length (h)<select id="scLen"><option value="90">1.5</option><option value="120">2</option><option value="150">2.5</option><option value="180">3</option></select></label>
-  </div>
-  <div class="scen" id="scen"></div>
-  <div class="hint">Scenarios use the card, tag, student and student-enrolment fields above and the two logins (staff login also auto-enrolls the student if needed). <span id="scStatus"></span></div>
+<section class="wide" aria-labelledby="h-net" data-dev="kiosk room">
+  <details>
+    <summary><h2 id="h-net" style="display:inline">Advanced: network and heartbeat <small>ESP32 Wi-Fi, FR-8.1</small></h2></summary>
+    <div class="row">
+      <label>Interval (s)<input id="hbInterval" type="number" min="1" max="600" value="30" style="width:80px"></label>
+      <label>Jitter +/- (s)<input id="hbJitter" type="number" min="0" max="30" value="2" style="width:80px"></label>
+      <label class="inline"><input type="checkbox" id="hbKiosk" checked> kiosk</label>
+      <label class="inline"><input type="checkbox" id="hbRoom" checked> room reader</label>
+      <button id="hbNow">Send now</button>
+    </div>
+    <div class="row">
+      <label>Latency (ms)<input id="latency" type="number" min="0" max="10000" value="0" style="width:80px"></label>
+      <label>Packet loss (%)<input id="loss" type="number" min="0" max="100" value="0" style="width:80px"></label>
+      <label>HTTP timeout (s)<input id="timeout" type="number" min="1" max="60" value="5" style="width:80px"></label>
+    </div>
+    <div class="hint">Hardware calls only. Use these to test the firmware's retry and timeout handling: a dropped or timed-out request shows in the log and on the LCD, as a lost ESP32 request would.</div>
+    <div class="hint" id="hbStatus">Heartbeats start with the page.</div>
+    <div class="hint">Wi-Fi off stops polling and heartbeats. The station goes Warning then Offline within a few windows (US-15). Station health (needs the admin login):</div>
+    <div id="health" class="hint">-</div>
+  </details>
 </section>
 
 <section class="wide" aria-labelledby="h-log" data-dev="kiosk room phone admin">
-  <h2 id="h-log">Event log <small>every request and response: method, URL, status, ms</small></h2>
-  <div class="hint">The download has the station header, request and response bodies of every call. Hand it to whoever writes the firmware as the exact traffic the API expects.</div>
-  <div class="row"><button id="logClear">Clear</button><button id="logCopy">Copy as text</button><button id="logDownload">Download full log (.json)</button></div>
-  <div id="log" aria-live="off"></div>
+  <details open>
+    <summary><h2 id="h-log" style="display:inline">Event log <small>every request and response: method, URL, status, ms</small></h2></summary>
+    <div class="hint">The download has the station header, request and response bodies of every call. Hand it to whoever writes the firmware as the exact traffic the API expects.</div>
+    <div class="row"><button id="logClear">Clear</button><button id="logCopy">Copy as text</button><button id="logDownload">Download full log (.json)</button></div>
+    <div id="log" aria-live="off"></div>
+  </details>
 </section>
 </main>
 
@@ -349,6 +452,38 @@ const SOUNDS = {
 $("beep").onclick = () => SOUNDS.OK();
 
 // ---------------------------------------------------------------- LCD + kiosk state
+// flow stepper + "do this next" coaching (UI only; the kiosk state machine below drives it)
+const STEPS = ["Tap card", "Fingerprint", "Item tag", "Photo", "Approval", "Confirm", "Room check-in"];
+const STEP_NEXT = [null, "FINGERPRINT", "ASSET", "PHOTO", "WAIT", "CONFIRM", null];
+for (const s of STEPS) $("steps").append(Object.assign(document.createElement("li"), { textContent: s }));
+let stepAt = 0;
+function paintSteps(at, bad) {
+  stepAt = at; [...$("steps").children].forEach((li, i) => { li.className = bad && i === at ? "bad" : i < at ? "done" : i === at ? "now" : ""; });
+}
+function coach(btn, text) {
+  for (const b of document.querySelectorAll("button.next")) b.classList.remove("next");
+  if (btn && $(btn)) $(btn).classList.add("next");
+  $("coach").textContent = text;
+}
+const COACH = {
+  FINGERPRINT: ["finger", "Place the student's finger on the reader."], ASSET: ["tapTag", "Tap the item's tag on the kiosk."],
+  PHOTO: ["shoot", "The kiosk is taking the checkout photo."], WAIT: ["", "Waiting for the instructor to approve on the phone panel."],
+  CONFIRM: ["ok", "Press OK / Confirm to finish."],
+};
+function coachFor(v) {
+  if (!v) return coach("tapCard", "Tap the instructor's card to start a checkout, or use a one-click flow above.");
+  if (v.finished) {
+    if (v.status === "COMPLETED") return coach(v.type === "RETURN" ? "tapCard" : "tapRoom", v.type === "RETURN" ? "Returned. Tap a card to start another checkout." : "Checked out. Tap the tag at the room reader to check in.");
+    return coach("tapCard", "Denied (" + (v.failureCode || v.status) + "). Tap a card to try again.");
+  }
+  const c = COACH[v.nextStep]; coach(c ? c[0] : "", c ? c[1] : "Follow the kiosk screen.");
+}
+function stepsFor(v) {
+  if (v.finished) paintSteps(v.status === "COMPLETED" ? 6 : stepAt, v.status !== "COMPLETED");
+  else { const i = STEP_NEXT.indexOf(v.nextStep); paintSteps(i > 0 ? i : stepAt); }
+  coachFor(v);
+}
+
 const K = { view: null, session: null, photoBusy: false, last: "" };
 function lcdSet(lines, off) {
   const l = [...lines, "", "", "", ""].slice(0, 4).map(s => (s || "").slice(0, 20));
@@ -361,7 +496,7 @@ function render(v) {
   $("stat").className = "pill " + (v.status === "COMPLETED" ? "ok" : v.finished ? "bad" : "warn");
   const key = v.sessionId + v.status + v.nextStep;
   if (key !== K.last) {
-    K.last = key;
+    K.last = key; stepsFor(v);
     if (v.finished) { (v.status === "COMPLETED" ? SOUNDS.OK : SOUNDS.DENY)(); refreshLoansSoon(); } else (SOUNDS[v.nextStep] || (() => {}))();
     if (v.nextStep === "PHOTO" && $("autoPhoto").checked) autoPhoto();
   }
@@ -375,6 +510,7 @@ async function kiosk(method, path, o = {}) {
 }
 const stationCode = () => encodeURIComponent(cfg.station);
 async function kStart(type, card) {
+  paintSteps(0);
   const body = type === "RETURN" ? { type } : { cardUid: card, ...(type ? { type } : {}) };
   const r = await kiosk("POST", `/kiosk/${stationCode()}/sessions`, { body });
   if (r.ok) render(r.data); return r;
@@ -431,7 +567,27 @@ $("tapTag").onclick = () => kTag(cfg.tagUid);
 $("finger").onclick = () => kFinger();
 $("ok").onclick = () => kConfirm();
 $("cancel").onclick = () => kCancel();
-$("cardSel").onchange = e => { if (e.target.value) { $("cardUid").value = e.target.value; cfg.cardUid = e.target.value; saveCfg(); } };
+$("cardSel").onchange = e => { if (e.target.value) { setCard(e.target.value); const i = ACCOUNTS.phone.findIndex(a => a[2] === e.target.value); if (i >= 0) switchAccount("phone", i); } };
+function setCard(uid) { $("cardUid").value = uid; cfg.cardUid = uid; if ([...$("cardSel").options].some(o => o.value === uid)) $("cardSel").value = uid; saveCfg(); }
+// demo accounts (see DevSeed). Teachers carry the card that belongs to them, so the approval lands on the phone that is signed in.
+const ACCOUNTS = {
+  phone: [["instructor@tams.test", "Ina Instructor (event coordinator)", "04A1B2C3", "Demo#Pass123"], ["instructor2@tams.test", "Ian Instructor", "04A1B2C4", "Demo#Pass123"], ["instructor3@tams.test", "Iris Instructor", "04A1B2C5", "Demo#Pass123"]],
+  staff: [["admin@tams.test", "Admin", "", "Admin#Pass123"], ["tech@tams.test", "Tess Technician (tech staff)", "", "Demo#Pass123"], ["custodian@tams.test", "Joy Custodian (custodian)", "", "Demo#Pass123"]],
+};
+const ACCT_FIELDS = { phone: ["phEmail", "phPw", "phAcct"], staff: ["stEmail", "stPw", "stAcct"] };
+for (const kind of Object.keys(ACCOUNTS)) {
+  const sel = $(ACCT_FIELDS[kind][2]);
+  for (const [email, label] of ACCOUNTS[kind]) sel.add(new Option(label + " - " + email, email));
+  sel.value = cfg[ACCT_FIELDS[kind][0]]; if (!sel.value) sel.selectedIndex = 0;
+  sel.onchange = () => switchAccount(kind, sel.selectedIndex);
+}
+async function switchAccount(kind, i) {
+  const [email, , card, pw] = ACCOUNTS[kind][i], [fe, fp, fs] = ACCT_FIELDS[kind];
+  $(fs).selectedIndex = i; $(fe).value = cfg[fe] = email; $(fp).value = pw; saveCfg();
+  if (card) setCard(card);
+  if (kind === "phone") { P.items = []; renderPending(); return phoneLogin(); }
+  return staffLogin();
+}
 $("roomTagSel").onchange = e => { if (e.target.value) { $("roomTagUid").value = e.target.value; cfg.roomTagUid = e.target.value; saveCfg(); } };
 $("tagSel").onchange = e => { if (e.target.value) { $("tagUid").value = e.target.value; cfg.tagUid = e.target.value; saveCfg(); } };
 $("wifi").onchange = () => logNote("Wi-Fi " + (wifiOn() ? "ON" : "OFF"));
@@ -547,7 +703,7 @@ async function refreshPending() {
 function fillRooms() { const s = $("scRoom"), cur = s.value; s.length = 1; for (const r of P.rooms) s.add(new Option(`${r.code} ${r.name}`, r.id)); s.value = cur; }
 function renderPending() {
   const box = $("pending"); box.textContent = "";
-  if (!P.items.length) { box.textContent = "No pending approvals."; box.className = "hint"; return; }
+  if (!P.items.length) { box.textContent = "No approval requests yet. They appear here when a student borrows an item."; box.className = "hint"; return; }
   for (const it of P.items) {
     const c = document.createElement("div"); c.className = "card";
     const t = document.createElement("div"); t.textContent = `${it.student.fullName} (${it.student.studentNo}, ${it.student.sectionCode}) wants ${it.asset.assetCode} ${it.asset.name}`;
@@ -607,6 +763,7 @@ async function roomTap(tag) {
   if (r.ok) {
     const good = r.data.signal === "SUCCESS"; $("roomLed").className = "led " + (good ? "green" : "red"); $("roomRes").textContent = `${r.data.result} ${r.data.assetCode || ""}`;
     (good ? SOUNDS.OK : SOUNDS.DENY)(); setTimeout(() => { $("roomLed").className = "led"; }, 2500); refreshLoansSoon();
+    if (good) { paintSteps(7); coach("", "Room check-in recorded. The flow is complete."); } else { paintSteps(6, true); coach("tapRoom", "Room reader refused it (" + r.data.result + ")."); }
   }
   return r;
 }
@@ -741,27 +898,48 @@ async function approvalTimeout() {
   try { const r = await checkoutFlow({ decision: "ignore" }); if (r.finished) return r; logNote("Waiting for the approval to time out..."); await until(() => finished(), 150000, 1000); return cur(); }
   finally { if (prior != null) await api("PUT", "/settings/approval_timeout_seconds", { actor: "staff", body: { value: prior } }); }
 }
-const scenBox = $("scen"); let running = false;
-for (const [name, fn, check] of SCEN) {
-  const b = document.createElement("button"); b.textContent = name; b.dataset.name = name;
-  b.onclick = () => runScenario(name);
-  scenBox.append(b);
+let running = false;
+const FEATURED = { "Happy-path checkout + room check-in": "Borrow an item: card, fingerprint, tag, photo, approval, confirm, room check-in", "Return (RETURN session)": "Return the item: fingerprint, then tag" };
+for (const [name] of SCEN) {
+  const b = document.createElement("button"); b.dataset.name = name; b.onclick = () => runScenario(name);
+  if (FEATURED[name]) {
+    b.className = "big primary"; b.append(Object.assign(document.createElement("span"), { textContent: name }), Object.assign(document.createElement("small"), { textContent: FEATURED[name] }));
+    $("scenFeat").append(b);
+  } else { b.textContent = name; (/^(Denied|Wrong-room)/.test(name) ? $("scenDenied") : $("scenMore")).append(b); }
 }
 async function runScenario(name) {
   if (running) return; running = true; const [, fn, check] = SCEN.find(s => s[0] === name);
-  $("scStatus").textContent = "Running: " + name; logNote("SCENARIO START " + name);
+  document.body.classList.add("running"); for (const b of $("scenBox").querySelectorAll("button")) b.disabled = true;
+  $("scStatus").className = "result run"; $("scStatus").textContent = "Running: " + name + " ..."; logNote("SCENARIO START " + name);
   let res = null, err = null;
   try { res = await fn(); } catch (e) { err = e; }
   const pass = !err && res && check(res);
   logNote(`SCENARIO ${pass ? "PASS" : "FAIL"} ${name}${res ? ` (status ${res.status}, failureCode ${res.failureCode || "-"})` : ""}${err ? " " + err : ""}`);
-  $("scStatus").textContent = `${pass ? "PASS" : "FAIL"}: ${name}`; running = false; refreshLoansSoon();
+  $("scStatus").className = "result " + (pass ? "ok" : "bad"); $("scStatus").textContent = `${pass ? "PASS" : "FAIL"}: ${name}${res && res.failureCode ? " (" + res.failureCode + ")" : ""}`;
+  running = false; document.body.classList.remove("running"); for (const b of $("scenBox").querySelectorAll("button")) b.disabled = false; refreshLoansSoon();
   document.body.dataset.result = JSON.stringify({ name, pass: !!pass, status: res && res.status, failureCode: res && res.failureCode });
   return pass;
 }
+// Reset database: two clicks (the first arms the button for 4 s) instead of a modal dialog.
+let resetArmed = 0;
+$("resetDb").onclick = async () => {
+  const b = $("resetDb");
+  if (!resetArmed) { resetArmed = setTimeout(() => { resetArmed = 0; b.textContent = "Reset database"; }, 4000); b.textContent = "Click again to wipe all data"; return; }
+  clearTimeout(resetArmed); resetArmed = 0; b.disabled = true; b.textContent = "Resetting...";
+  $("scStatus").className = "result run"; $("scStatus").textContent = "Dropping the database and seeding it again ...";
+  let r = null; try { r = await fetch("/sim/reset", { method: "POST", headers: { "X-Sim-Reset": "yes" } }); } catch { /* shown below */ }
+  if (r && r.ok) { $("scStatus").className = "result ok"; $("scStatus").textContent = "Database reset. Reloading ..."; setTimeout(() => location.reload(), 600); return; }
+  $("scStatus").className = "result bad"; $("scStatus").textContent = "Reset failed (" + (r ? r.status : "network error") + "). Check the API log.";
+  b.disabled = false; b.textContent = "Reset database";
+};
 window.SIM = { runScenario, SCEN, api, actors, K, checkoutFlow, returnFlow, cfg, phoneLogin, staffLogin };
 
 // ---------------------------------------------------------------- boot
 lcdSet(["TAMS Counter", "Tap auth card", "", ""]);
+paintSteps(0); coachFor(null);
+// demo accounts are pre-filled, so sign them in on load (the Account sections change them)
+if (!device || device === "phone") phoneLogin();
+if (!device || device === "admin") staffLogin();
 if (!device || device === "kiosk") pollLoop();   // only the kiosk polls its session
 if (!device || device === "kiosk" || device === "room") heartbeat().then(hbSchedule);
 // #run=<scenario index> auto-runs one scenario (headless smoke test): sets body[data-result] when done.

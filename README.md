@@ -41,7 +41,7 @@ certificate warning) with the Scalar UI at `http://localhost:8080/scalar`. Sign 
   `http://localhost:5173`, the Vite dev server). Change it in `.env` if the front end runs elsewhere.
 - **Sample data:** with `SEED_DEMO=true` (the `.env.example` default) an empty database is filled with the data from
   `docs/TEST-DATA.md`: rooms, a kiosk, laptops and PCs, two sections and four students. Demo accounts are
-  `tech@`, `custodian@`, `instructor@` and `instructor2@tams.test`, all with password `Demo#Pass123`; the admin is
+  `tech@`, `custodian@`, `instructor@`, `instructor2@` and `instructor3@tams.test`, all with password `Demo#Pass123`; the admin is
   the `BOOTSTRAP_ADMIN_*` account. It runs only in Development and only once (it skips a database that already has
   the `STORE-1` room). To start over: `docker compose down -v`.
 - **Tests:** `dotnet test` runs the endpoint tests against a throwaway PostgreSQL in Docker.

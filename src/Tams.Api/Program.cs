@@ -144,6 +144,22 @@ if (app.Environment.IsDevelopment())
     var simPage = Path.Combine(AppContext.BaseDirectory, "Sim", "kiosk-sim.html");
     app.MapGet("/sim", () => File.Exists(simPage) ? Results.File(simPage, "text/html; charset=utf-8") : Results.NotFound())
         .AllowAnonymous().ExcludeFromDescription();
+
+    // The simulator's Reset button: drop the database, migrate, and seed it again (admin + demo data when Seed:Demo is on).
+    // The custom header forces a CORS preflight, so another web page cannot trigger it with a simple cross-site POST.
+    app.MapPost("/sim/reset", async (HttpRequest req) =>
+    {
+        if (req.Headers["X-Sim-Reset"] != "yes") return Results.BadRequest(new { code = "RESET_HEADER_REQUIRED" });
+        using (var scope = app.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<TamsDbContext>();
+            await db.Database.EnsureDeletedAsync();
+            await db.Database.MigrateAsync();
+        }
+        await app.SeedDevelopmentAdminAsync();
+        await app.Services.SeedDemoDataAsync();
+        return Results.Ok(new { reset = true });
+    }).AllowAnonymous().ExcludeFromDescription();
 }
 
 if (app.Environment.IsDevelopment()) AuthorizationCoverage.LogViolations(app); // keep after the last Map* call

@@ -22,14 +22,31 @@ Open `http://localhost:8080/sim` (or your `API_PORT`). Without Docker for the AP
 The demo seeder and CORS come from `dev` (merged into this branch); the seeder fills rooms, a kiosk, a room reader, assets,
 students and demo accounts only when `Seed__Demo=true`.
 
+## Layout, accounts and reset
+
+The page opens on **Start here**: the two big scenario buttons (happy-path checkout, return), the denied-path scenarios and the rest
+under "More scenarios", then a seven-step stepper (tap card, fingerprint, item tag, photo, approval, confirm, room check-in) with a
+coach line that says which button to press next. Connection settings, camera options and the network panel are in collapsed
+`<details>`.
+
+**Switching accounts.** The phone panel has an account select for the three teachers (Ina, Ian, Iris) and the admin panel one for admin,
+tech and custodian. Picking a teacher also selects that teacher's card (an approval goes to the phone of the instructor who owns the
+card, so the two must match), and picking a card in the card list switches the phone to its owner.
+
+**Reset database.** The red button in Start here wipes the database and seeds it again, for testing only. Click once to arm it (4 s),
+click again to run. It is `POST /sim/reset` with the header `X-Sim-Reset: yes` (400 without it), mapped in **Development only**, no
+login needed, so do not expose a Development instance publicly. It drops the database, migrates, then reseeds the admin and the demo
+data (when `Seed__Demo=true`), and the page reloads and logs the panels back in. Loans, sessions, enrolled fingerprints and the ledger
+are gone; the scenarios enroll students again by themselves.
+
 ## Demo credentials and cards
 
 | What | Value |
 |---|---|
 | Admin (staff panel) | `admin@tams.test` / `Admin#Pass123` (whatever you set in `BOOTSTRAP_*`; the page pre-fills these) |
-| Instructor (phone panel) | `instructor@tams.test` / `Demo#Pass123` |
-| Other demo accounts | `tech@`, `custodian@`, `instructor2@tams.test`, same password |
-| Instructor card UID | `04A1B2C3` |
+| Teachers (phone panel) | `instructor@` (Ina, event coordinator), `instructor2@` (Ian), `instructor3@tams.test` (Iris), all `Demo#Pass123` |
+| Other demo accounts | `tech@`, `custodian@tams.test`, same password |
+| Teacher card UIDs | Ina `04A1B2C3`, Ian `04A1B2C4`, Iris `04A1B2C5` |
 | Item tags | LT-001 `E2000017221101441890`, LT-002 `04A1B2C3D4E5F6` |
 | Stations | counter kiosk `KIOSK-1`, room reader `ROOM-101` (in LAB-101); rooms LAB-101, LAB-102, STORE-1 |
 | Room reader key | `ROOM-101` has the key `demo-room-101-key` (seeded; the page sends it as `X-Station-Key`) |

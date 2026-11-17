@@ -26,8 +26,6 @@ public static class DevSeed
         using var scope = services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<TamsDbContext>();
         var hasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher<User>>();
-        if (await db.Rooms.AnyAsync(r => r.Code == "STORE-1")) return;
-
         var now = DateTimeOffset.UtcNow;
 
         User NewUser(string email, string employeeNo, string first, string last, UserRole role, bool coordinator = false)
@@ -42,6 +40,24 @@ public static class DevSeed
             };
             u.PasswordHash = hasher.HashPassword(u, Password);
             return u;
+        }
+
+        async Task EnsureCardAsync(User u, string uid)
+        {
+            if (!await db.AuthCards.AnyAsync(c => c.CardUid == uid))
+                db.AuthCards.Add(new AuthCard { Id = Guid.NewGuid(), CardUid = uid, UserId = u.Id, IssuedAt = now });
+        }
+
+        // Instructor 3 and the cards of instructors 2 and 3 were added after the first demo set shipped,
+        // so they also top up databases that were already seeded.
+        var instructor3 = await db.Users.FirstOrDefaultAsync(u => u.Email == "instructor3@tams.test");
+        if (instructor3 is null) { instructor3 = NewUser("instructor3@tams.test", "E-1006", "Iris", "Instructor", UserRole.Instructor); db.Users.Add(instructor3); }
+        if (await db.Rooms.AnyAsync(r => r.Code == "STORE-1"))
+        {
+            await EnsureCardAsync(await db.Users.FirstAsync(u => u.Email == "instructor2@tams.test"), "04A1B2C4");
+            await EnsureCardAsync(instructor3, "04A1B2C5");
+            await db.SaveChangesAsync();
+            return;
         }
 
         var tech = NewUser("tech@tams.test", "E-1002", "Tess", "Technician", UserRole.TechStaff);
@@ -65,6 +81,8 @@ public static class DevSeed
             new Station { Id = Guid.NewGuid(), StationCode = "ROOM-101", Type = StationType.RoomStation, RoomId = lab1.Id, Name = "Lab 1 Reader", KeyHash = StationAuth.HashKey(DemoRoomKey), CreatedAt = now, UpdatedAt = now });
 
         db.AuthCards.Add(new AuthCard { Id = Guid.NewGuid(), CardUid = "04A1B2C3", UserId = instructor.Id, IssuedAt = now });
+        await EnsureCardAsync(instructor2, "04A1B2C4");
+        await EnsureCardAsync(instructor3, "04A1B2C5");
 
         var laptops = new AssetCategory { Id = Guid.NewGuid(), Name = "Laptops", Description = "Borrowable laptops", IsBorrowable = true };
         var desktops = new AssetCategory { Id = Guid.NewGuid(), Name = "Desktop PCs", Description = "Fixed lab PCs", IsBorrowable = false };
