@@ -16,7 +16,7 @@ public class DevSeedAndCorsTests(ApiFixture api)
         Assert.Equal(1, (await admin.GetAsync("/api/stations?type=COUNTER_KIOSK&roomId=" + await RoomId(admin, "STORE-1")).Ok()).GetProperty("total").GetInt32());
         Assert.Equal(1, (await admin.GetAsync("/api/students?q=2024-0001").Ok()).GetProperty("total").GetInt32());
 
-        foreach (var email in new[] { "tech@tams.test", "custodian@tams.test", "instructor@tams.test", "instructor2@tams.test" })
+        foreach (var email in new[] { "tech@tams.test", "custodian@tams.test", "instructor@tams.test", "instructor2@tams.test", "instructor3@tams.test" })
             await api.NoAuth().PostRawAsync("/api/auth/login", $$"""{"email":"{{email}}","password":"{{DevSeed.Password}}"}""").Expect(200);
     }
 
