@@ -5,7 +5,7 @@ not approved off-campus biometric storage, so no real student names, fingerprint
 
 ## URLs (private, tailnet only)
 
-Base URL: `https://desktop-j5od7j4.tail39de31.ts.net`
+Base URL: `https://<tailnet-host>` (the real address is on the TAMS-133 Jira ticket, not in the repo)
 
 | What | URL |
 |---|---|
@@ -27,14 +27,14 @@ Never share the owner's Tailscale login. Two ways in, the first is preferred:
 1. **Share this one machine.** The owner opens the Tailscale admin console, Machines, `desktop-j5od7j4`, Share, and
    sends the invite link. The teammate signs in with their own Tailscale account, accepts, and sees only this
    machine (not the owner's other devices). Each teammate needs their own account and invite link. Untested: whether
-   the `https://desktop-j5od7j4.tail39de31.ts.net` address works for a shared user; the first teammate should try
+   the `https://<tailnet-host>` address works for a shared user; the first teammate should try
    `/health` and report back.
 2. **Invite them into the tailnet** (admin console, Users, Invite users). They log in with their own account but can
    see every device in the tailnet unless access rules limit it. The free plan caps the number of users.
 
 On the phone or laptop: install Tailscale, sign in, turn it on (VPN key icon on Android), then open the URL. If it
 says the DNS address cannot be found, Tailscale is off or not connected. Turn off Android Private DNS and the
-browser's secure DNS if it still fails. Without DNS: `http://100.83.34.79:8080/health` (the PC's tailnet address).
+browser's secure DNS if it still fails. Without DNS: `http://<pc-tailnet-ip>:8080/health` (the PC's tailnet address, on the Jira ticket).
 
 ## Accounts and test data
 
@@ -57,7 +57,7 @@ It is gitignored. The tailnet address is the only way in; no router ports are op
 ```
 git pull
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build api
-curl https://desktop-j5od7j4.tail39de31.ts.net/health
+curl https://<tailnet-host>/health
 ```
 
 Then log in once as a demo user. Migrations run at start.
