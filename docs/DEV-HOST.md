@@ -20,6 +20,22 @@ and be invited to the tailnet first. It is not on the public internet (Tailscale
 
 `backup` in `/health` reads `failed` until `AGE_RECIPIENT` is set in `.env` (TAMS-130). That does not affect the API.
 
+## Giving a teammate access
+
+Never share the owner's Tailscale login. Two ways in, the first is preferred:
+
+1. **Share this one machine.** The owner opens the Tailscale admin console, Machines, `desktop-j5od7j4`, Share, and
+   sends the invite link. The teammate signs in with their own Tailscale account, accepts, and sees only this
+   machine (not the owner's other devices). Each teammate needs their own account and invite link. Untested: whether
+   the `https://desktop-j5od7j4.tail39de31.ts.net` address works for a shared user; the first teammate should try
+   `/health` and report back.
+2. **Invite them into the tailnet** (admin console, Users, Invite users). They log in with their own account but can
+   see every device in the tailnet unless access rules limit it. The free plan caps the number of users.
+
+On the phone or laptop: install Tailscale, sign in, turn it on (VPN key icon on Android), then open the URL. If it
+says the DNS address cannot be found, Tailscale is off or not connected. Turn off Android Private DNS and the
+browser's secure DNS if it still fails. Without DNS: `http://100.83.34.79:8080/health` (the PC's tailnet address).
+
 ## Accounts and test data
 
 Demo accounts, station codes and tags are in `docs/TEST-DATA.md`. `SEED_DEMO=true` loads them into an empty
