@@ -154,6 +154,38 @@ public class DamageLiabilityTests(ApiFixture api)
     }
 
     [Fact]
+    public async Task A_loan_can_carry_both_a_missing_and_a_damage_liability_and_only_the_missing_one_lifts_the_hold()
+    {
+        var admin = await api.As("ADMIN");
+        var s = await Seed.Student(admin);
+        var e = await EventScenario.Create(api);
+        await admin.PutRawAsync($"/api/loans/{e.LoanIds[0]}/borrower", Borrower($"First{s.StudentNo} Last{s.StudentNo}", s.StudentNo)).Ok();
+        await admin.PostRawAsync($"/api/loans/{e.LoanIds[0]}/mark-missing", "{}").Expect(200);
+        Task<int> ActiveHolds() => Db(d => d.ProfileHolds.CountAsync(h => h.LoanId == e.LoanIds[0] && h.Status == PenaltyStatus.Active));
+        Assert.Equal(1, await ActiveHolds());
+
+        // The item turns up damaged: staff can still charge the damage on the same loan.
+        var res = await SetCondition(e, 0, "DAMAGED");
+        var last = res.GetProperty("lastBorrower");
+        Assert.True(last.GetProperty("hasMissingLiability").GetBoolean());
+        Assert.False(last.GetProperty("hasDamageLiability").GetBoolean());
+        var url = $"/api/assets/{e.AssetIds[0]}/damage-liability";
+        var damage = await admin.PostRawAsync(url, $$"""{"loanId":"{{e.LoanIds[0]}}","amount":700}""").Ok(201);
+        await admin.PostRawAsync(url, $$"""{"loanId":"{{e.LoanIds[0]}}","amount":700}""").Expect(409, "LIABILITY_EXISTS");
+
+        var rows = await Db(d => d.Liabilities.AsNoTracking().Where(l => l.LoanId == e.LoanIds[0]).ToListAsync());
+        Assert.Equal(2, rows.Count);
+        Assert.All(rows, l => Assert.Equal(s.Id, l.StudentId));
+        var missing = rows.Single(l => l.Reason == LiabilityReason.Missing);
+
+        // Settling the damage must not lift the hold the missing item caused; settling the missing one does.
+        await admin.PostRawAsync($"/api/liabilities/{damage.GetProperty("id").GetGuid()}/settle", """{"status":"WAIVED"}""").Ok();
+        Assert.Equal(1, await ActiveHolds());
+        await admin.PostRawAsync($"/api/liabilities/{missing.Id}/settle", """{"status":"WAIVED"}""").Ok();
+        Assert.Equal(0, await ActiveHolds());
+    }
+
+    [Fact]
     public async Task Only_admin_and_technical_staff_can_assign_damage()
     {
         var e = await EventScenario.Create(api);

@@ -121,7 +121,7 @@ public class TamsDbContext(DbContextOptions<TamsDbContext> options) : DbContext(
         b.Entity<RoomScan>().HasIndex(x => new { x.StationId, x.ScannedAt });
         b.Entity<LateArrivalWarning>().HasIndex(x => x.LoanId).IsUnique();
         b.Entity<NonComplianceMark>().HasIndex(x => new { x.LoanId, x.Reason }).IsUnique();
-        b.Entity<Liability>().HasIndex(x => x.LoanId).IsUnique();
+        b.Entity<Liability>().HasIndex(x => new { x.LoanId, x.Reason }).IsUnique();   // one MISSING and one DAMAGE per loan
         b.Entity<AuditItem>().HasIndex(x => x.ClientScanId).IsUnique();
         b.Entity<AuditLogEntry>().HasIndex(x => new { x.EntityType, x.EntityId });
         b.Entity<AuditLogEntry>().HasIndex(x => x.CreatedAt);

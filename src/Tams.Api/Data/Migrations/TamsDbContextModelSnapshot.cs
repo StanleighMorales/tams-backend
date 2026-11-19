@@ -1179,15 +1179,15 @@ namespace Tams.Api.Data.Migrations
                     b.HasIndex("LiableUserId")
                         .HasDatabaseName("ix_liabilities_liable_user_id");
 
-                    b.HasIndex("LoanId")
-                        .IsUnique()
-                        .HasDatabaseName("ix_liabilities_loan_id_uq");
-
                     b.HasIndex("SettledByUserId")
                         .HasDatabaseName("ix_liabilities_settled_by_user_id");
 
                     b.HasIndex("StudentId")
                         .HasDatabaseName("ix_liabilities_student_id");
+
+                    b.HasIndex("LoanId", "Reason")
+                        .IsUnique()
+                        .HasDatabaseName("ix_liabilities_loan_id_reason_uq");
 
                     b.ToTable("liabilities", t =>
                         {

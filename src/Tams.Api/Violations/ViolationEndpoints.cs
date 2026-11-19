@@ -252,12 +252,15 @@ public static class ViolationEndpoints
         l.Notes = Clean(req.Notes) ?? l.Notes;
         var why = $"Liability {Support.Label(status)}";
 
-        foreach (var h in await db.ProfileHolds.Where(h => h.LoanId == l.LoanId && h.Status == PenaltyStatus.Active).ToListAsync(ct))
+        // The hold and freeze come from the missing item, so only settling the MISSING liability lifts them; settling a damage
+        // liability on the same loan (or on a returned loan with an overdue hold) must not.
+        var lifts = l.Reason == LiabilityReason.Missing;
+        foreach (var h in lifts ? await db.ProfileHolds.Where(h => h.LoanId == l.LoanId && h.Status == PenaltyStatus.Active).ToListAsync(ct) : [])
         {
             (h.Status, h.LiftedAt, h.LiftedByUserId, h.Reason) = (PenaltyStatus.Cleared, now, actor, why);
             LoanRules.Audit(db, "HOLD_LIFTED", "profile_hold", h.Id, new { h.StudentId, h.LoanId, reason = why }, actor, ip: Ip(http));
         }
-        var freezes = await db.ApprovalFreezes.Where(f => f.LoanId == l.LoanId && f.Status == PenaltyStatus.Active).ToListAsync(ct);
+        var freezes = lifts ? await db.ApprovalFreezes.Where(f => f.LoanId == l.LoanId && f.Status == PenaltyStatus.Active).ToListAsync(ct) : [];
         foreach (var f in freezes)
         {
             (f.Status, f.LiftedAt, f.LiftedByUserId, f.LiftNote) = (PenaltyStatus.Cleared, now, actor, why);
