@@ -34,8 +34,8 @@ tech and custodian. Picking a teacher also selects that teacher's card (an appro
 card, so the two must match), and picking a card in the card list switches the phone to its owner.
 
 **Reset database.** The red button in Start here wipes the database and seeds it again, for testing only. Click once to arm it (4 s),
-click again to run. It is `POST /sim/reset` with the header `X-Sim-Reset: yes` (400 without it), mapped in **Development only**, no
-login needed, so do not expose a Development instance publicly. It drops the database, migrates, then reseeds the admin and the demo
+click again to run. It is `POST /sim/reset` with the header `X-Sim-Reset: yes` (400 without it), mapped in **Development only**. It needs an **ADMIN**
+token (401 without a login, 403 for other roles), so the staff panel must be signed in as admin; do not expose a Development instance publicly. It drops the database, migrates, then reseeds the admin and the demo
 data (when `Seed__Demo=true`), and the page reloads and logs the panels back in. Loans, sessions, enrolled fingerprints and the ledger
 are gone; the scenarios enroll students again by themselves.
 

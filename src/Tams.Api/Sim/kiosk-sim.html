@@ -927,9 +927,13 @@ $("resetDb").onclick = async () => {
   if (!resetArmed) { resetArmed = setTimeout(() => { resetArmed = 0; b.textContent = "Reset database"; }, 4000); b.textContent = "Click again to wipe all data"; return; }
   clearTimeout(resetArmed); resetArmed = 0; b.disabled = true; b.textContent = "Resetting...";
   $("scStatus").className = "result run"; $("scStatus").textContent = "Dropping the database and seeding it again ...";
-  let r = null; try { r = await fetch("/sim/reset", { method: "POST", headers: { "X-Sim-Reset": "yes" } }); } catch { /* shown below */ }
+  if (!actors.staff.token) await staffLogin();   // the reset needs the admin's token
+  const headers = { "X-Sim-Reset": "yes" }; if (actors.staff.token) headers.Authorization = "Bearer " + actors.staff.token;
+  let r = null; try { r = await fetch("/sim/reset", { method: "POST", headers }); } catch { /* shown below */ }
   if (r && r.ok) { $("scStatus").className = "result ok"; $("scStatus").textContent = "Database reset. Reloading ..."; setTimeout(() => location.reload(), 600); return; }
-  $("scStatus").className = "result bad"; $("scStatus").textContent = "Reset failed (" + (r ? r.status : "network error") + "). Check the API log.";
+  $("scStatus").className = "result bad"; $("scStatus").textContent = r && (r.status === 401 || r.status === 403)
+    ? "Reset needs the ADMIN account in the staff panel (status " + r.status + ")."
+    : "Reset failed (" + (r ? r.status : "network error") + "). Check the API log.";
   b.disabled = false; b.textContent = "Reset database";
 };
 window.SIM = { runScenario, SCEN, api, actors, K, checkoutFlow, returnFlow, cfg, phoneLogin, staffLogin };
