@@ -147,6 +147,7 @@ if (app.Environment.IsDevelopment())
 
     // The simulator's Reset button: drop the database, migrate, and seed it again (admin + demo data when Seed:Demo is on).
     // The custom header forces a CORS preflight, so another web page cannot trigger it with a simple cross-site POST.
+    // ADMIN only: the dev host is shared (TAMS-133), so an anonymous POST must not be able to wipe it.
     app.MapPost("/sim/reset", async (HttpRequest req) =>
     {
         if (req.Headers["X-Sim-Reset"] != "yes") return Results.BadRequest(new { code = "RESET_HEADER_REQUIRED" });
@@ -159,7 +160,7 @@ if (app.Environment.IsDevelopment())
         await app.SeedDevelopmentAdminAsync();
         await app.Services.SeedDemoDataAsync();
         return Results.Ok(new { reset = true });
-    }).AllowAnonymous().ExcludeFromDescription();
+    }).RequireAuthorization(Policies.AdminOnly).ExcludeFromDescription();
 }
 
 if (app.Environment.IsDevelopment()) AuthorizationCoverage.LogViolations(app); // keep after the last Map* call
