@@ -36,6 +36,14 @@ On the phone or laptop: install Tailscale, sign in, turn it on (VPN key icon on 
 says the DNS address cannot be found, Tailscale is off or not connected. Turn off Android Private DNS and the
 browser's secure DNS if it still fails. Without DNS: `http://<pc-tailnet-ip>:8080/health` (the PC's tailnet address, on the Jira ticket).
 
+## Shared database and the reset button
+
+Everyone shares one database, so two people testing at once see each other's loans and sessions. The simulator's red
+"Reset database" button (`POST /sim/reset`) drops the whole database and reseeds it. It needs the ADMIN account
+(anonymous gets 401, other roles 403), but the demo admin login is public in the repo, so any teammate can use it.
+Tell the team before you test, and do not click it while someone else is working. Turn it off or protect it more
+before this host is exposed with Funnel.
+
 ## Accounts and test data
 
 Demo accounts, station codes and tags are in `docs/TEST-DATA.md`. `SEED_DEMO=true` loads them into an empty
