@@ -7,8 +7,25 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="ClosedXML" Version="0.105.1" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.12" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
-    <PackageReference Include="Npgsql" Version="10.0.3" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.14">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+    <PackageReference Include="QRCoder" Version="1.8.1" />
+    <PackageReference Include="Scalar.AspNetCore" Version="2.19.0" />
+    <InternalsVisibleTo Include="Tams.Api.Tests" />
+    <PackageReference Include="SourceAFIS" Version="3.14.0" />
+    <!-- SourceAFIS 3.14.0 pins ImageSharp 2.1.3. 2.1.13 is the newest Apache-licensed release; 3.x and 4.x need a paid licence for Release builds. See docs/STATUS.md. -->
+    <PackageReference Include="SixLabors.ImageSharp" Version="2.1.13" />
+  </ItemGroup>
+
+  <!-- Development simulator page (served at /sim in Development only; see docs/SIMULATOR.md). -->
+  <ItemGroup>
+    <Content Include="Sim\kiosk-sim.html" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

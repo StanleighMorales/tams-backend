@@ -13,6 +13,9 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0
 WORKDIR /app
 COPY --from=build /app .
 
+# Mount points owned by the non-root user so the named volumes (media, dp-keys) are writable.
+RUN mkdir -p /app/media /app/keys && chown -R $APP_UID /app/media /app/keys
+
 ENV ASPNETCORE_HTTP_PORTS=8080
 EXPOSE 8080
 

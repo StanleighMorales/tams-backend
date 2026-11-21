@@ -1,0 +1,12 @@
+# Local front-end work only:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+# Publishes the API's plain HTTP port (default 8080, change it with API_PORT in .env if it is taken) so a
+# browser app can call it without trusting Caddy's local HTTPS certificate, and supplies a throwaway JWT
+# signing key so .env needs no JWT_KEY. NEVER use this file on the VPS: the key is public and the API
+# would be reachable without Caddy.
+services:
+  api:
+    environment:
+      Jwt__Key: ${JWT_KEY:-dev-only-signing-key-change-me-0123456789abcdef}
+    ports:
+      - "${API_PORT:-8080}:8080"

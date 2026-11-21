@@ -1,0 +1,953 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TAMS Kiosk Simulator</title>
+<style>
+:root{--bg:#f3f5f8;--panel:#fff;--ink:#1b1f24;--mute:#586471;--line:#d5dae0;--accent:#1f6feb;--accent-soft:#e3eeff;--ok:#1a7f37;--ok-soft:#dcf5e3;--bad:#cf222e;--bad-soft:#fde4e6;--warn:#8a5a00;--lcd-bg:#0d3b24;--lcd-fg:#9dff9d;--code:#eef0f3;--shadow:0 1px 2px rgba(20,30,50,.08),0 4px 14px rgba(20,30,50,.06)}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0d1115;--panel:#171c22;--ink:#e6e9ed;--mute:#a1abb6;--line:#2c343d;--accent:#58a6ff;--accent-soft:#16283f;--ok:#3fb950;--ok-soft:#12301b;--bad:#f85149;--bad-soft:#3a1618;--warn:#d29922;--lcd-bg:#06210f;--lcd-fg:#7dff7d;--code:#0f1317;--shadow:0 1px 2px rgba(0,0,0,.4)}}
+:root[data-theme=dark]{--bg:#0d1115;--panel:#171c22;--ink:#e6e9ed;--mute:#a1abb6;--line:#2c343d;--accent:#58a6ff;--accent-soft:#16283f;--ok:#3fb950;--ok-soft:#12301b;--bad:#f85149;--bad-soft:#3a1618;--warn:#d29922;--lcd-bg:#06210f;--lcd-fg:#7dff7d;--code:#0f1317;--shadow:0 1px 2px rgba(0,0,0,.4)}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+header{padding:10px 16px;border-bottom:1px solid var(--line);background:var(--panel);display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center}
+header h1{font-size:18px;margin:0 8px 0 0}
+header .sub{color:var(--mute);font-size:13px;flex-basis:100%;margin:0}
+nav.tabs{display:flex;gap:4px;flex-wrap:wrap}
+nav.tabs a{padding:6px 12px;border-radius:99px;color:var(--ink);text-decoration:none;border:1px solid var(--line);font-size:13px}
+nav.tabs a:hover{border-color:var(--accent)}
+nav.tabs a.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto}
+.chip{display:inline-flex;flex-direction:row;align-items:center;gap:6px;border:1px solid var(--line);border-radius:99px;padding:5px 12px;font-size:13px;cursor:pointer;min-height:34px;color:var(--ink)}
+.chip:has(input:checked){background:var(--accent-soft);border-color:var(--accent)}
+details.settings{flex-basis:100%}
+details.settings summary{cursor:pointer;color:var(--mute);font-size:13px}
+details.settings .row{margin-top:8px}
+main{padding:14px 16px 40px;display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:14px;max-width:1500px;margin:auto}
+section{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;min-width:0;grid-column:span 12;box-shadow:var(--shadow)}
+@media (min-width:900px){section{grid-column:span 6}}
+@media (min-width:1200px){section{grid-column:span 4}section.span2{grid-column:span 8}}
+section.wide{grid-column:1/-1}
+section h2{font-size:15px;margin:0 0 2px}
+section h2 small{font-weight:400;color:var(--mute)}
+.who{display:inline-block;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--accent);background:var(--accent-soft);border-radius:99px;padding:1px 9px;margin-bottom:4px}
+label{display:flex;flex-direction:column;font-size:12px;color:var(--mute);gap:3px}
+label.inline{flex-direction:row;align-items:center;gap:6px}
+input,select,button,textarea{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:7px 10px;min-width:0;min-height:38px}
+input[type=checkbox]{padding:0;min-height:0;width:16px;height:16px}
+input[type=range]{padding:0;min-height:0}
+button{cursor:pointer;background:var(--code);transition:background .15s,border-color .15s,transform .1s;touch-action:manipulation}
+button:hover:not(:disabled){border-color:var(--accent)}
+button:active:not(:disabled){transform:scale(.98)}
+button.primary{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600}
+button.danger{color:var(--bad)}
+button:disabled{opacity:.5;cursor:not-allowed}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:end;margin:8px 0}
+.hint{color:var(--mute);font-size:13px;margin:4px 0}
+code{background:var(--code);padding:0 4px;border-radius:4px;font-size:12px}
+details.more{margin-top:8px;border-top:1px dashed var(--line);padding-top:6px}
+details.more>summary{cursor:pointer;color:var(--mute);font-size:13px;padding:4px 0}
+details.more[open]>summary{color:var(--ink)}
+/* start here */
+.start{border:2px solid var(--accent);background:linear-gradient(180deg,var(--accent-soft),var(--panel) 70%)}
+.start h2{font-size:18px}
+.feat{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:10px;margin:10px 0}
+button.big{min-height:64px;text-align:left;display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:10px 14px;font-size:16px}
+button.big small{font-weight:400;font-size:12px;opacity:.9}
+button.big:not(.primary){background:var(--panel);border:2px solid var(--accent)}
+.grp{font-size:12px;font-weight:600;color:var(--mute);text-transform:uppercase;letter-spacing:.04em;margin:12px 0 6px}
+.scen{display:flex;flex-wrap:wrap;gap:6px}
+.result{margin-top:10px;padding:8px 12px;border-radius:8px;border:1px solid var(--line);background:var(--code);font-size:14px;min-height:38px}
+.result.run{border-color:var(--accent);background:var(--accent-soft)}
+.result.ok{border-color:var(--ok);background:var(--ok-soft);color:var(--ok);font-weight:600}
+.result.bad{border-color:var(--bad);background:var(--bad-soft);color:var(--bad);font-weight:600}
+body.running #scenBox button{opacity:.55;cursor:progress}
+/* stepper */
+.steps{list-style:none;margin:10px 0;padding:0;display:flex;flex-wrap:wrap;gap:6px;counter-reset:s}
+.steps li{counter-increment:s;display:flex;align-items:center;gap:8px;padding:6px 12px 6px 6px;border-radius:99px;border:1px solid var(--line);color:var(--mute);font-size:13px;background:var(--panel)}
+.steps li::before{content:counter(s);display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--code);font-size:12px;font-weight:700;color:var(--mute)}
+.steps li.done{color:var(--ok);border-color:var(--ok)}
+.steps li.done::before{content:"\2713";background:var(--ok);color:#fff}
+.steps li.now{color:var(--ink);border-color:var(--accent);background:var(--accent-soft);font-weight:600}
+.steps li.now::before{background:var(--accent);color:#fff}
+.steps li.bad{color:var(--bad);border-color:var(--bad);background:var(--bad-soft);font-weight:600}
+.steps li.bad::before{content:"!";background:var(--bad);color:#fff}
+.coach{margin:6px 0 0;font-size:15px;font-weight:600}
+@media (prefers-reduced-motion:no-preference){
+  button.next{animation:pulse 1.4s ease-in-out infinite}
+  @keyframes pulse{50%{box-shadow:0 0 0 6px color-mix(in srgb,var(--accent) 30%,transparent)}}
+}
+button.next{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 35%,transparent)}
+/* devices */
+.lcd{background:var(--lcd-bg);color:var(--lcd-fg);font:20px/1.3 ui-monospace,Consolas,monospace;padding:14px 16px;border-radius:8px;border:6px solid #2b2f33;box-shadow:inset 0 0 12px rgba(0,0,0,.6);white-space:pre;overflow:hidden;letter-spacing:.5px}
+.lcd.off{opacity:.35}
+.pill{display:inline-block;border-radius:99px;padding:2px 10px;font-size:12px;background:var(--code);border:1px solid var(--line)}
+.pill.ok{color:var(--ok)}.pill.bad{color:var(--bad)}.pill.warn{color:var(--warn)}
+.led{display:inline-block;width:16px;height:16px;border-radius:50%;background:var(--line);vertical-align:middle}
+.led.green{background:#2ea043;box-shadow:0 0 10px #2ea043}.led.red{background:#f85149;box-shadow:0 0 10px #f85149}
+.kgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:16px}
+.phone{border-radius:22px;border:4px solid #2b2f33}
+.phone h2{text-align:center}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{border-bottom:1px solid var(--line);padding:5px 8px;text-align:left;white-space:nowrap}
+.scroll{overflow:auto;max-height:260px}
+tr.click{cursor:pointer}tr.click:hover{background:var(--code)}
+pre{background:var(--code);padding:6px 8px;border-radius:6px;overflow:auto;max-height:220px;margin:6px 0;font-size:12px}
+#log{max-height:360px;overflow:auto;font:12px/1.35 ui-monospace,Consolas,monospace}
+#log div{border-bottom:1px solid var(--line);padding:2px 0}
+#log .s2{color:var(--ok)}#log .s4,#log .s5,#log .s0{color:var(--bad)}#log .note{color:var(--accent)}#log .poll{opacity:.55}
+body:not(.showpolls) #log .poll{display:none}
+video,canvas.cam{width:100%;max-width:240px;background:#000;border-radius:8px;display:block}
+.card{border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:8px 0}
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">TAMS Kiosk Simulator</h1>
+  <nav class="tabs" aria-label="Device pages"><a href="?">All devices</a> <a href="?device=kiosk">Kiosk</a> <a href="?device=room">Room reader</a> <a href="?device=phone">Phone</a> <a href="?device=admin">Admin</a></nav>
+  <div class="chips">
+    <label class="chip"><input type="checkbox" id="wifi" checked> Wi-Fi on</label>
+    <label class="chip"><input type="checkbox" id="mute"> Mute buzzer</label>
+  </div>
+  <p class="sub">Simulates the hardware only. The backend is the real API and every call shows in the event log.</p>
+  <details class="settings"><summary>Connection settings</summary>
+    <div class="row">
+      <label>API base URL<input id="base" size="22" autocomplete="off"></label>
+      <label>Counter kiosk <small>station_code</small><input id="station" size="10" autocomplete="off"></label>
+      <label>Room reader <small>station_code</small><input id="roomStation" size="10" autocomplete="off"></label>
+      <label>Room reader <small>X-Station-Key</small><input id="roomKey" size="14" autocomplete="off"></label>
+      <label class="inline"><input type="checkbox" id="showPolls"> Show polls in log</label>
+    </div>
+  </details>
+</header>
+<main>
+
+<section class="wide start" aria-labelledby="h-scen">
+  <button id="resetDb" class="danger" style="float:right" title="Drops the database and seeds it again (development only)">Reset database</button>
+  <h2 id="h-scen">Start here: run a whole flow with one click</h2>
+  <div class="hint">The simulator taps, scans, approves and confirms for you across every device below. Watch the steps light up.</div>
+  <div id="scenBox">
+    <div class="feat" id="scenFeat"></div>
+    <div class="grp">Denied cases (the API should refuse these)</div>
+    <div class="scen" id="scenDenied"></div>
+    <div class="grp">Staff and hardware</div>
+    <div class="scen" id="scenMore"></div>
+  </div>
+  <div id="scStatus" class="result" role="status" aria-live="polite">Pick a flow to run.</div>
+  <details class="more"><summary>Scenario options</summary>
+    <div class="row">
+      <label>Phone destination room<select id="scRoom"><option value="">first non-storage room</option></select></label>
+      <label>Class length (h)<select id="scLen"><option value="90">1.5</option><option value="120">2</option><option value="150">2.5</option><option value="180">3</option></select></label>
+    </div>
+    <div class="hint">Scenarios use the card, tag and student fields in the panels below and the two demo logins. Staff login also enrolls the student if needed.</div>
+  </details>
+</section>
+
+<section class="wide" aria-labelledby="h-flow" data-dev="kiosk room">
+  <h2 id="h-flow">Where are we in the flow?</h2>
+  <ol id="steps" class="steps" aria-label="Borrow flow progress"></ol>
+  <p id="coach" class="coach" role="status" aria-live="polite"></p>
+</section>
+
+<section class="span2" aria-labelledby="h-kiosk" data-dev="kiosk">
+  <span class="who">Student side</span>
+  <h2 id="h-kiosk">Counter kiosk <small>LCD, buttons, buzzer, webcam</small></h2>
+  <div class="kgrid">
+    <div>
+      <div class="lcd" id="lcd" role="status" aria-live="polite" aria-label="LCD 4 by 20"></div>
+      <div class="row">
+        <span class="pill" id="stat">idle</span>
+        <span class="hint">next step: <b id="next">-</b></span>
+        <span class="hint" id="fail"></span>
+      </div>
+      <div class="row">
+        <button id="ok" class="primary" aria-label="Confirm (OK button)">OK / Confirm</button>
+        <button id="cancel" class="danger" aria-label="Cancel (X button)">X / Cancel</button>
+        <button id="beep" title="Unlock browser audio">Test buzzer</button>
+      </div>
+    </div>
+    <div>
+      <b>Counter webcam</b>
+      <video id="video" autoplay muted playsinline hidden></video>
+      <canvas id="cam" class="cam" width="320" height="240" aria-label="Webcam preview"></canvas>
+      <div class="row">
+        <button id="shoot">Capture now</button>
+        <label class="inline"><input type="checkbox" id="autoPhoto" checked> Auto capture on PHOTO step</label>
+      </div>
+      <details class="more"><summary>Camera options</summary>
+        <div class="row">
+          <button id="camStart">Use real camera</button>
+          <label class="inline"><input type="checkbox" id="camFault"> Simulate camera error</label>
+        </div>
+        <div class="hint">Camera error: the kiosk retries once, then reports failure (no file) and the API denies with PHOTO_FAILED.</div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="h-pn" data-dev="kiosk">
+  <span class="who">Student side</span>
+  <h2 id="h-pn">Card and tag reader <small>PN532</small></h2>
+  <div class="row">
+    <label>Auth card<select id="cardSel">
+      <option value="04A1B2C3">Instructor Ina (04A1B2C3)</option>
+      <option value="04A1B2C4">Instructor Ian (04A1B2C4)</option>
+      <option value="04A1B2C5">Instructor Iris (04A1B2C5)</option>
+      <option value="DEADBEEF">Unknown card (DEADBEEF)</option>
+      <option value="">Custom UID...</option></select></label>
+    <button id="tapCard" class="primary">Tap card (start CHECKOUT)</button>
+  </div>
+  <div class="row">
+    <label>Item tag<select id="tagSel">
+      <option value="E2000017221101441890">LT-001 Dell Latitude</option>
+      <option value="04A1B2C3D4E5F6">LT-002 ThinkPad</option>
+      <option value="0000DEAD0000">Unknown tag</option>
+      <option value="">Custom UID...</option></select></label>
+    <button id="tapTag" class="primary">Tap tag on kiosk (ASSET)</button>
+  </div>
+  <div class="row"><button id="startReturn">Start RETURN (no card)</button></div>
+  <details class="more"><summary>Custom UIDs</summary>
+    <div class="row">
+      <label>Card UID<input id="cardUid" size="12" value="04A1B2C3" autocomplete="off"></label>
+      <label>Tag UID<input id="tagUid" size="22" value="E2000017221101441890" autocomplete="off"></label>
+    </div>
+  </details>
+</section>
+
+<section aria-labelledby="h-fp" data-dev="kiosk">
+  <span class="who">Student side</span>
+  <h2 id="h-fp">Fingerprint reader <small>AS608, FR-1.3</small></h2>
+  <div class="row">
+    <label>Student no.<input id="studentNo" list="studentList" size="12" value="2024-0001" autocomplete="off"></label>
+    <datalist id="studentList"><option value="2024-0001"><option value="2024-0002"><option value="2024-0003"><option value="2024-0004"></datalist>
+    <button id="finger" class="primary">Place finger</button>
+  </div>
+  <details class="more"><summary>Fingerprint options and enrollment</summary>
+    <div class="row">
+      <label>Finger index (0-9)<input id="fingerIdx" type="number" min="0" max="9" value="1" style="width:70px"></label>
+      <label>Noise (bytes flipped): <output id="noiseOut">0</output><input id="noise" type="range" min="0" max="256" value="0"></label>
+    </div>
+    <div class="row">
+      <label class="inline"><input type="checkbox" id="wrongFinger"> Wrong finger (random finger)</label>
+      <label class="inline"><input type="checkbox" id="sendImage" checked> Send sensor image (SourceAFIS)</label>
+    </div>
+    <div class="row"><button id="enroll">Enrollment mode: start on kiosk (needs staff login)</button></div>
+    <div class="hint">Staff starts a session, the kiosk idle poll picks it up, then Place finger and OK (confirm). The student must be enrolled first (a scenario does it for you).</div>
+    <details class="more"><summary>How matching works</summary>
+      <div class="hint">Default: the kiosk uploads the sensor <b>image</b> (TAMS-128): 256x288 raw 8-bit gray, base64, with <code>width</code> and <code>height</code>. The API builds a SourceAFIS template in memory, matches it 1:N against enrolled fingers, stores only the encrypted template and discards the image. The image here is a synthetic ridge pattern derived from student no. + finger index; Noise adds pixel noise and a small shift per scan. A match needs a SourceAFIS score of at least <code>Kiosk:SourceAfisThreshold</code> (provisional default 40, not calibrated on real AS608 captures). Untick "Send sensor image" for the legacy 512-byte template (<code>Kiosk:MatchThreshold</code>, Hamming distance, made-up bytes). Fingers enrolled one way only match the same way; delete and re-enroll to switch.</div>
+    </details>
+  </details>
+</section>
+
+<section aria-labelledby="h-room" data-dev="room">
+  <span class="who">Room door</span>
+  <h2 id="h-room">Room reader <small>PN532, LED, buzzer (F3)</small></h2>
+  <div class="row">
+    <label>Item tag<select id="roomTagSel">
+      <option value="E2000017221101441890">LT-001 Dell Latitude</option>
+      <option value="04A1B2C3D4E5F6">LT-002 ThinkPad</option>
+      <option value="0000DEAD0000">Unknown tag</option>
+      <option value="">Custom UID...</option></select></label>
+    <button id="tapRoom" class="primary">Tap tag at room door</button>
+    <span>LED <span class="led" id="roomLed" role="img" aria-label="room LED"></span> <span id="roomRes" class="hint"></span></span>
+  </div>
+  <details class="more"><summary>Custom UID and details</summary>
+    <div class="row"><label>Tag UID<input id="roomTagUid" size="22" value="E2000017221101441890" autocomplete="off"></label></div>
+    <div class="hint">Posts <code>POST /stations/{code}/scans</code> for the room reader's station code. Green LED and chime for SUCCESS, red and a low tone for ERROR (FR-3.2).</div>
+  </details>
+</section>
+
+<section class="phone" aria-labelledby="h-phone" data-dev="phone">
+  <span class="who">Instructor side</span>
+  <h2 id="h-phone">Instructor phone <small>F2 approval</small></h2>
+  <label>Switch teacher<select id="phAcct"></select></label>
+  <div class="hint">Signed in as <b id="phWho">...</b> &middot; live <span class="pill" id="phLive">offline</span></div>
+  <div id="phFreeze" class="hint"></div>
+  <div id="pending"></div>
+  <details class="more"><summary>Account and live events</summary>
+    <div class="row">
+      <label>Email<input id="phEmail" size="20" autocomplete="off"></label>
+      <label>Password<input id="phPw" type="password" size="12" autocomplete="off"></label>
+      <button id="phLogin" class="primary">Log in</button>
+    </div>
+    <b>Live events</b>
+    <div id="events" class="scroll hint"></div>
+  </details>
+</section>
+
+<section class="wide" aria-labelledby="h-staff" data-dev="admin">
+  <span class="who">Staff side</span>
+  <h2 id="h-staff">Admin and loans <small>GET /loans</small></h2>
+  <div class="row">
+    <label>Switch staff account<select id="stAcct"></select></label>
+    <span class="hint">Signed in as <b id="stWho">...</b></span>
+    <button id="loansRefresh">Refresh loans</button>
+    <label class="inline"><input type="checkbox" id="loansAuto" checked> auto refresh</label>
+  </div>
+  <div class="hint">Click a row for loan detail.</div>
+  <div class="scroll"><table id="loans" aria-label="Loans"><thead><tr><th>Loan</th><th>Asset</th><th>Student</th><th>Status</th><th>Custody</th><th>Room</th><th>Due</th></tr></thead><tbody></tbody></table></div>
+  <pre id="loanDetail" hidden></pre>
+  <details class="more"><summary>Account</summary>
+    <div class="row">
+      <label>Email<input id="stEmail" size="20" autocomplete="off"></label>
+      <label>Password<input id="stPw" type="password" size="12" autocomplete="off"></label>
+      <button id="stLogin" class="primary">Log in</button>
+    </div>
+    <div class="hint">Admin, tech or custodian.</div>
+  </details>
+</section>
+
+<section class="wide" aria-labelledby="h-net" data-dev="kiosk room">
+  <details>
+    <summary><h2 id="h-net" style="display:inline">Advanced: network and heartbeat <small>ESP32 Wi-Fi, FR-8.1</small></h2></summary>
+    <div class="row">
+      <label>Interval (s)<input id="hbInterval" type="number" min="1" max="600" value="30" style="width:80px"></label>
+      <label>Jitter +/- (s)<input id="hbJitter" type="number" min="0" max="30" value="2" style="width:80px"></label>
+      <label class="inline"><input type="checkbox" id="hbKiosk" checked> kiosk</label>
+      <label class="inline"><input type="checkbox" id="hbRoom" checked> room reader</label>
+      <button id="hbNow">Send now</button>
+    </div>
+    <div class="row">
+      <label>Latency (ms)<input id="latency" type="number" min="0" max="10000" value="0" style="width:80px"></label>
+      <label>Packet loss (%)<input id="loss" type="number" min="0" max="100" value="0" style="width:80px"></label>
+      <label>HTTP timeout (s)<input id="timeout" type="number" min="1" max="60" value="5" style="width:80px"></label>
+    </div>
+    <div class="hint">Hardware calls only. Use these to test the firmware's retry and timeout handling: a dropped or timed-out request shows in the log and on the LCD, as a lost ESP32 request would.</div>
+    <div class="hint" id="hbStatus">Heartbeats start with the page.</div>
+    <div class="hint">Wi-Fi off stops polling and heartbeats. The station goes Warning then Offline within a few windows (US-15). Station health (needs the admin login):</div>
+    <div id="health" class="hint">-</div>
+  </details>
+</section>
+
+<section class="wide" aria-labelledby="h-log" data-dev="kiosk room phone admin">
+  <details open>
+    <summary><h2 id="h-log" style="display:inline">Event log <small>every request and response: method, URL, status, ms</small></h2></summary>
+    <div class="hint">The download has the station header, request and response bodies of every call. Hand it to whoever writes the firmware as the exact traffic the API expects.</div>
+    <div class="row"><button id="logClear">Clear</button><button id="logCopy">Copy as text</button><button id="logDownload">Download full log (.json)</button></div>
+    <div id="log" aria-live="off"></div>
+  </details>
+</section>
+</main>
+
+<script>
+"use strict";
+// ponytail: one file, no framework, no build. Hardware is simulated; the backend is the real API.
+const $ = id => document.getElementById(id);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+// ?device=kiosk|room|phone|admin shows one device on its own page (open each in its own tab; they share the real API, not state)
+const DEVICES = ["kiosk", "room", "phone", "admin"];
+const device = DEVICES.find(d => d === (new URLSearchParams(location.search).get("device") || "").toLowerCase()) || "";
+if (device) {
+  for (const sec of document.querySelectorAll("section")) sec.hidden = !(sec.dataset.dev || "").split(" ").includes(device);
+  const names = { kiosk: "Counter kiosk", room: "Room reader", phone: "Instructor phone", admin: "Admin" };
+  $("title").textContent = "TAMS " + names[device] + " (simulated)"; document.title = $("title").textContent;
+}
+for (const a of document.querySelectorAll("nav a")) if (a.getAttribute("href") === (device ? "?device=" + device : "?")) a.classList.add("on");
+const STORE_KEY = "tams-sim" + (device ? "-" + device : "");
+const DEFAULTS = {
+  latency: 0, loss: 0, timeout: 5, roomTagUid: "E2000017221101441890",
+  base: "/api", station: "KIOSK-1", roomStation: "ROOM-101", roomKey: "demo-room-101-key", hbInterval: 30, hbJitter: 2, hbKiosk: true, hbRoom: true,
+  cardUid: "04A1B2C3", tagUid: "E2000017221101441890", studentNo: "2024-0001", fingerIdx: 1, noise: 0,
+  autoPhoto: true, mute: false, showPolls: false, scLen: "90",
+  phEmail: "instructor@tams.test", phPw: "Demo#Pass123", stEmail: "admin@tams.test", stPw: "Admin#Pass123", loansAuto: true,
+};
+const SAVED = ["base","station","roomStation","roomKey","hbInterval","hbJitter","hbKiosk","hbRoom","latency","loss","timeout","roomTagUid","cardUid","tagUid","studentNo","fingerIdx","noise","autoPhoto","mute","showPolls","scLen","phEmail","stEmail","loansAuto"];
+let cfg = { ...DEFAULTS };
+try { Object.assign(cfg, JSON.parse(localStorage.getItem(STORE_KEY) || "{}")); } catch { /* private window: run on defaults */ }
+function saveCfg() { try { localStorage.setItem(STORE_KEY, JSON.stringify(Object.fromEntries(SAVED.map(k => [k, cfg[k]])))); } catch { /* ignore */ } }
+for (const k of Object.keys(DEFAULTS)) {
+  const el = $(k); if (!el) continue;
+  if (el.type === "checkbox") el.checked = !!cfg[k]; else el.value = cfg[k];
+  el.addEventListener("input", () => { cfg[k] = el.type === "checkbox" ? el.checked : el.value; saveCfg(); if (k === "showPolls") document.body.classList.toggle("showpolls", el.checked); if (k === "noise") $("noiseOut").textContent = el.value; });
+}
+$("noiseOut").textContent = cfg.noise;
+if (device) { // each device heartbeats only as itself; phone and admin are not stations
+  cfg.hbKiosk = $("hbKiosk").checked = device === "kiosk"; cfg.hbRoom = $("hbRoom").checked = device === "room";
+}
+document.body.classList.toggle("showpolls", !!cfg.showPolls);
+const wifiOn = () => $("wifi").checked;
+
+// ---------------------------------------------------------------- log + api
+const logEl = $("log"), LOGS = [];
+function logNote(text) { const d = document.createElement("div"); d.className = "note"; d.textContent = new Date().toLocaleTimeString() + "  # " + text; logEl.prepend(d); }
+function logLine(cls, text, detail, poll) {
+  const d = document.createElement("div"); d.className = cls + (poll ? " poll" : "");
+  const det = document.createElement("details"); const sum = document.createElement("summary"); sum.textContent = new Date().toLocaleTimeString() + "  " + text;
+  const pre = document.createElement("pre"); pre.textContent = detail; det.append(sum, pre); d.append(det); logEl.prepend(d);
+  while (logEl.childElementCount > 400) logEl.lastChild.remove();
+}
+$("logClear").onclick = () => { logEl.textContent = ""; LOGS.length = 0; };
+$("logDownload").onclick = () => {
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify({ baseUrl: cfg.base, calls: LOGS }, null, 2)], { type: "application/json" }));
+  a.download = "tams-sim-log-" + new Date().toISOString().replace(/[:.]/g, "-") + ".json"; a.click(); URL.revokeObjectURL(a.href);
+};
+$("logCopy").onclick = async () => { try { await navigator.clipboard.writeText([...logEl.querySelectorAll("summary,.note")].map(e => e.textContent).reverse().join("\n")); } catch { /* clipboard blocked */ } };
+
+const actors = { phone: { tag: "PHONE" }, staff: { tag: "STAFF" } };
+function url(path) { return cfg.base.replace(/\/$/, "") + path; }
+/** opts: body, form, station (send X-Station-Code), key (send X-Station-Key), hw (Wi-Fi gated), actor, poll */
+async function api(method, path, o = {}) {
+  const tag = o.tag || (o.actor ? actors[o.actor].tag : "HW");
+  if (o.hw && !wifiOn()) { logLine("s0", `${tag} ${method} ${path} -> BLOCKED (Wi-Fi off)`, "", o.poll); return { status: 0, ok: false, data: null, offline: true }; }
+  if (o.hw) { // simulate the ESP32's link: latency, then maybe a lost request
+    if (+cfg.latency > 0) await sleep(+cfg.latency);
+    if (Math.random() * 100 < +cfg.loss) { logLine("s0", `${tag} ${method} ${path} -> DROPPED (packet loss)`, "", o.poll); return { status: 0, ok: false, data: null, offline: true }; }
+  }
+  const headers = {};
+  if (o.station) headers["X-Station-Code"] = cfg.station;
+  if (o.key && cfg.roomKey.trim()) headers["X-Station-Key"] = cfg.roomKey.trim();
+  if (o.actor && actors[o.actor].token) headers.Authorization = "Bearer " + actors[o.actor].token;
+  let body;
+  if (o.form) body = o.form; else if (o.body !== undefined) { headers["Content-Type"] = "application/json"; body = JSON.stringify(o.body); }
+  const t0 = performance.now(); let res, data = null, text = "";
+  const ctl = new AbortController(), killer = o.hw ? setTimeout(() => ctl.abort(), Math.max(1, +cfg.timeout || 5) * 1000) : 0;
+  try { res = await fetch(url(path), { method, headers, body, signal: ctl.signal }); text = await res.text(); try { data = text ? JSON.parse(text) : null; } catch { data = null; } }
+  catch (e) { logLine("s0", `${tag} ${method} ${path} -> ${e.name === "AbortError" ? "TIMEOUT after " + cfg.timeout + " s" : "network error " + e.message}`, "", o.poll); return { status: 0, ok: false, data: null, offline: true, timedOut: e.name === "AbortError" }; }
+  finally { clearTimeout(killer); }
+  const ms = Math.round(performance.now() - t0);
+  const code = data && data.code ? " " + data.code : "";
+  if (!o.poll) LOGS.push({ at: new Date().toISOString(), actor: tag, method, path, stationCode: o.station ? cfg.station : undefined, ms, status: res.status,
+    request: o.form ? "[multipart]" : o.body !== undefined ? redact(o.body) : null, response: data ?? text.slice(0, 500) });
+  if (LOGS.length > 2000) LOGS.shift();
+  logLine("s" + Math.floor(res.status / 100), `${tag} ${method} ${path} -> ${res.status}${code} ${ms}ms`,
+    `request: ${o.form ? "[multipart " + (o.form.get("file") ? o.form.get("file").size + " bytes JPEG" : "no file") + "]" : o.body !== undefined ? JSON.stringify(redact(o.body)) : "(none)"}\nresponse: ${text.slice(0, 2000)}`, o.poll);
+  if (res.status === 401 && o.actor && !o.retried && await relogin(o.actor)) return api(method, path, { ...o, retried: true });
+  return { status: res.status, ok: res.ok, data };
+}
+const redact = b => b && typeof b === "object" ? Object.fromEntries(Object.entries(b).map(([k, v]) => [k, /password|template|image/i.test(k) ? "[hidden]" : v])) : b;
+
+async function login(actor, email, password) {
+  const a = actors[actor]; a.email = email; a.password = password;
+  const r = await api("POST", "/auth/login", { body: { email, password }, tag: a.tag });
+  if (!r.ok) { a.token = null; return false; }
+  a.token = r.data.accessToken; a.refresh = r.data.refreshToken; a.user = r.data.user; return true;
+}
+async function relogin(actor) {
+  const a = actors[actor];
+  if (a.refresh) {
+    const r = await api("POST", "/auth/refresh", { body: { refreshToken: a.refresh }, tag: a.tag });
+    if (r.ok) { a.token = r.data.accessToken; a.refresh = r.data.refreshToken; return true; }
+  }
+  return a.email ? login(actor, a.email, a.password) : false;
+}
+
+// ---------------------------------------------------------------- buzzer (WebAudio)
+let audio;
+function tone(freq, ms, type = "square", at = 0) {
+  if ($("mute").checked) return;
+  try {
+    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+    const o = audio.createOscillator(), g = audio.createGain(), t = audio.currentTime + at;
+    o.type = type; o.frequency.value = freq; g.gain.value = 0.05; o.connect(g); g.connect(audio.destination); o.start(t); o.stop(t + ms / 1000);
+  } catch { /* audio blocked until a gesture */ }
+}
+const SOUNDS = {
+  FINGERPRINT: () => tone(660, 90), ASSET: () => tone(784, 90), PHOTO: () => tone(523, 60), WAIT: () => tone(440, 60),
+  CONFIRM: () => { tone(880, 90); tone(880, 90, "square", .15); },
+  OK: () => { tone(523, 110, "sine"); tone(659, 110, "sine", .12); tone(784, 160, "sine", .24); },
+  DENY: () => tone(160, 450, "sawtooth"),
+};
+$("beep").onclick = () => SOUNDS.OK();
+
+// ---------------------------------------------------------------- LCD + kiosk state
+// flow stepper + "do this next" coaching (UI only; the kiosk state machine below drives it)
+const STEPS = ["Tap card", "Fingerprint", "Item tag", "Photo", "Approval", "Confirm", "Room check-in"];
+const STEP_NEXT = [null, "FINGERPRINT", "ASSET", "PHOTO", "WAIT", "CONFIRM", null];
+for (const s of STEPS) $("steps").append(Object.assign(document.createElement("li"), { textContent: s }));
+let stepAt = 0;
+function paintSteps(at, bad) {
+  stepAt = at; [...$("steps").children].forEach((li, i) => { li.className = bad && i === at ? "bad" : i < at ? "done" : i === at ? "now" : ""; });
+}
+function coach(btn, text) {
+  for (const b of document.querySelectorAll("button.next")) b.classList.remove("next");
+  if (btn && $(btn)) $(btn).classList.add("next");
+  $("coach").textContent = text;
+}
+const COACH = {
+  FINGERPRINT: ["finger", "Place the student's finger on the reader."], ASSET: ["tapTag", "Tap the item's tag on the kiosk."],
+  PHOTO: ["shoot", "The kiosk is taking the checkout photo."], WAIT: ["", "Waiting for the instructor to approve on the phone panel."],
+  CONFIRM: ["ok", "Press OK / Confirm to finish."],
+};
+function coachFor(v) {
+  if (!v) return coach("tapCard", "Tap the instructor's card to start a checkout, or use a one-click flow above.");
+  if (v.finished) {
+    if (v.status === "COMPLETED") return coach(v.type === "RETURN" ? "tapCard" : "tapRoom", v.type === "RETURN" ? "Returned. Tap a card to start another checkout." : "Checked out. Tap the tag at the room reader to check in.");
+    return coach("tapCard", "Denied (" + (v.failureCode || v.status) + "). Tap a card to try again.");
+  }
+  const c = COACH[v.nextStep]; coach(c ? c[0] : "", c ? c[1] : "Follow the kiosk screen.");
+}
+function stepsFor(v) {
+  if (v.finished) paintSteps(v.status === "COMPLETED" ? 6 : stepAt, v.status !== "COMPLETED");
+  else { const i = STEP_NEXT.indexOf(v.nextStep); paintSteps(i > 0 ? i : stepAt); }
+  coachFor(v);
+}
+
+const K = { view: null, session: null, photoBusy: false, last: "" };
+function lcdSet(lines, off) {
+  const l = [...lines, "", "", "", ""].slice(0, 4).map(s => (s || "").slice(0, 20));
+  $("lcd").textContent = l.join("\n"); $("lcd").classList.toggle("off", !!off);
+}
+function render(v) {
+  K.view = v; K.session = v && !v.finished ? v.sessionId : null;
+  lcdSet(v.lcdLines || []);
+  $("stat").textContent = (v.type || "") + " " + (v.status || ""); $("next").textContent = v.nextStep || "-"; $("fail").textContent = v.failureCode || "";
+  $("stat").className = "pill " + (v.status === "COMPLETED" ? "ok" : v.finished ? "bad" : "warn");
+  const key = v.sessionId + v.status + v.nextStep;
+  if (key !== K.last) {
+    K.last = key; stepsFor(v);
+    if (v.finished) { (v.status === "COMPLETED" ? SOUNDS.OK : SOUNDS.DENY)(); refreshLoansSoon(); } else (SOUNDS[v.nextStep] || (() => {}))();
+    if (v.nextStep === "PHOTO" && $("autoPhoto").checked) autoPhoto();
+  }
+  return v;
+}
+function offlineLcd(timedOut) { lcdSet([timedOut ? "Server timeout" : "No Wi-Fi", "Reconnecting...", "", ""], true); }
+async function kiosk(method, path, o = {}) {
+  const r = await api(method, path, { station: true, hw: true, tag: "KIOSK", ...o });
+  if (r.offline && !r.status) offlineLcd(r.timedOut);
+  return r;
+}
+const stationCode = () => encodeURIComponent(cfg.station);
+async function kStart(type, card) {
+  paintSteps(0);
+  const body = type === "RETURN" ? { type } : { cardUid: card, ...(type ? { type } : {}) };
+  const r = await kiosk("POST", `/kiosk/${stationCode()}/sessions`, { body });
+  if (r.ok) render(r.data); return r;
+}
+const sid = () => K.session;
+async function kFinger() {
+  if (!sid()) { logNote("No open session: tap a card or start RETURN first (sending anyway is a protocol error)."); }
+  const wrong = $("wrongFinger").checked, noise = +cfg.noise;
+  const body = $("sendImage").checked
+    ? { image: fpImage(cfg.studentNo, +cfg.fingerIdx, wrong, noise), width: FP_W, height: FP_H, sensorModel: "AS608", qualityScore: 90 }
+    : { template: fpTemplate(cfg.studentNo, +cfg.fingerIdx, wrong, noise), sensorModel: "AS608", qualityScore: 90 };
+  const r = await kiosk("POST", `/kiosk/sessions/${sid() || "00000000-0000-0000-0000-000000000000"}/fingerprint`, { body });
+  if (r.ok) render(r.data); return r;
+}
+async function kTag(tag) {
+  const r = await kiosk("POST", `/kiosk/sessions/${sid() || "00000000-0000-0000-0000-000000000000"}/asset`, { body: { tagUid: tag || cfg.tagUid } });
+  if (r.ok) render(r.data); return r;
+}
+async function kConfirm() { const r = await kiosk("POST", `/kiosk/sessions/${sid()}/confirm`); if (r.ok) render(r.data); return r; }
+async function kCancel() { const r = await kiosk("POST", `/kiosk/sessions/${sid()}/cancel`); if (r.ok) render(r.data); return r; }
+async function kPhotoOnce(fault) {
+  if (fault) return null;
+  const blob = await capture(); return blob;
+}
+let photoRunning = false;
+async function autoPhoto() {
+  if (photoRunning || !sid()) return; photoRunning = true;
+  try {
+    let blob = null;
+    for (let i = 0; i < 2 && !blob; i++) { blob = await kPhotoOnce($("camFault").checked); if (!blob) logNote(`Camera capture failed (attempt ${i + 1}/2)`); }
+    const form = new FormData(); if (blob) form.append("file", blob, "photo.jpg");
+    const r = await kiosk("POST", `/kiosk/sessions/${sid()}/photo`, { form });
+    if (r.ok) render(r.data);
+  } finally { photoRunning = false; }
+}
+// polling: GET session while open; GET /kiosk/{code}/session when idle (picks up a staff-started enrollment)
+async function pollLoop() {
+  let wait = 2000;
+  if (wifiOn()) {
+    if (K.session) {
+      const r = await kiosk("GET", `/kiosk/sessions/${K.session}`, { poll: true });
+      if (r.ok) { render(r.data); wait = (r.data.pollIntervalSeconds || 2) * 1000; }
+    } else {
+      const r = await kiosk("GET", `/kiosk/${stationCode()}/session`, { poll: true });
+      if (r.ok) { wait = (r.data.pollIntervalSeconds || 2) * 1000; if (r.data.session) render(r.data.session); else if (!K.view || K.view.finished) { if (!K.idleShown) lcdSet(r.data.lcdLines); K.idleShown = true; } }
+    }
+  } else offlineLcd();
+  setTimeout(pollLoop, wait);
+}
+
+$("tapCard").onclick = () => { K.idleShown = false; kStart(null, cfg.cardUid); };
+$("startReturn").onclick = () => { K.idleShown = false; kStart("RETURN"); };
+$("tapTag").onclick = () => kTag(cfg.tagUid);
+$("finger").onclick = () => kFinger();
+$("ok").onclick = () => kConfirm();
+$("cancel").onclick = () => kCancel();
+$("cardSel").onchange = e => { if (e.target.value) { setCard(e.target.value); const i = ACCOUNTS.phone.findIndex(a => a[2] === e.target.value); if (i >= 0) switchAccount("phone", i); } };
+function setCard(uid) { $("cardUid").value = uid; cfg.cardUid = uid; if ([...$("cardSel").options].some(o => o.value === uid)) $("cardSel").value = uid; saveCfg(); }
+// demo accounts (see DevSeed). Teachers carry the card that belongs to them, so the approval lands on the phone that is signed in.
+const ACCOUNTS = {
+  phone: [["instructor@tams.test", "Ina Instructor (event coordinator)", "04A1B2C3", "Demo#Pass123"], ["instructor2@tams.test", "Ian Instructor", "04A1B2C4", "Demo#Pass123"], ["instructor3@tams.test", "Iris Instructor", "04A1B2C5", "Demo#Pass123"]],
+  staff: [["admin@tams.test", "Admin", "", "Admin#Pass123"], ["tech@tams.test", "Tess Technician (tech staff)", "", "Demo#Pass123"], ["custodian@tams.test", "Joy Custodian (custodian)", "", "Demo#Pass123"]],
+};
+const ACCT_FIELDS = { phone: ["phEmail", "phPw", "phAcct"], staff: ["stEmail", "stPw", "stAcct"] };
+for (const kind of Object.keys(ACCOUNTS)) {
+  const sel = $(ACCT_FIELDS[kind][2]);
+  for (const [email, label] of ACCOUNTS[kind]) sel.add(new Option(label + " - " + email, email));
+  sel.value = cfg[ACCT_FIELDS[kind][0]]; if (!sel.value) sel.selectedIndex = 0;
+  sel.onchange = () => switchAccount(kind, sel.selectedIndex);
+}
+async function switchAccount(kind, i) {
+  const [email, , card, pw] = ACCOUNTS[kind][i], [fe, fp, fs] = ACCT_FIELDS[kind];
+  $(fs).selectedIndex = i; $(fe).value = cfg[fe] = email; $(fp).value = pw; saveCfg();
+  if (card) setCard(card);
+  if (kind === "phone") { P.items = []; renderPending(); return phoneLogin(); }
+  return staffLogin();
+}
+$("roomTagSel").onchange = e => { if (e.target.value) { $("roomTagUid").value = e.target.value; cfg.roomTagUid = e.target.value; saveCfg(); } };
+$("tagSel").onchange = e => { if (e.target.value) { $("tagUid").value = e.target.value; cfg.tagUid = e.target.value; saveCfg(); } };
+$("wifi").onchange = () => logNote("Wi-Fi " + (wifiOn() ? "ON" : "OFF"));
+
+// ---------------------------------------------------------------- fingerprint image (TAMS-128)
+const FP_W = 256, FP_H = 288;
+function seeded(str) {
+  let h = 2166136261; for (const c of str) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); }
+  return () => { h |= 0; h = h + 0x6D2B79F5 | 0; let t = Math.imul(h ^ h >>> 15, 1 | h); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+}
+// Same recipe as tests/Tams.Api.Tests/FixtureFingerprints.cs: ridge field plus a spiral core and 8 dislocations.
+// Rescan = same finger shifted a few pixels with sensor noise. Raw 8-bit gray, base64.
+function fpImage(studentNo, finger, wrong, noise) {
+  const f = seeded(wrong ? "wrong-" + Math.random() : `TAMS-SIM|${studentNo}|${finger}`);
+  const theta = f() * Math.PI, period = 8.5 + f() * 2;
+  const cx = 100 + f() * 56, cy = 110 + f() * 68, turns = 2 + Math.floor(f() * 3);
+  const dis = Array.from({ length: 8 }, () => ({ x: 50 + f() * 156, y: 60 + f() * 170, s: Math.floor(f() * 2) * 2 - 1 }));
+  const a1 = 2 + f() * 3, a2 = 2 + f() * 3, p1 = f() * 6.28, p2 = f() * 6.28;
+  const amp = Math.min(noise / 4, 60), dx = Math.round((Math.random() - .5) * 4), dy = Math.round((Math.random() - .5) * 4);
+  const img = new Uint8Array(FP_W * FP_H);
+  for (let y = 0; y < FP_H; y++) for (let x = 0; x < FP_W; x++) {
+    const u = x + dx, v = y + dy;
+    let ph = (u * Math.cos(theta) + v * Math.sin(theta)) / period + a1 * Math.sin(u / 37 + p1) + a2 * Math.sin(v / 29 + p2) + turns * Math.atan2(v - cy, u - cx) / (2 * Math.PI);
+    for (const d of dis) ph += d.s * Math.atan2(v - d.y, u - d.x) / (2 * Math.PI);
+    let px = 128 + 120 * Math.cos(2 * Math.PI * ph);
+    if (((u - 128) / 120) ** 2 + ((v - 144) / 136) ** 2 > 1) px = 255; else px += (Math.random() - .5) * 2 * (amp || 6);
+    img[y * FP_W + x] = Math.max(0, Math.min(255, px));
+  }
+  let bin = ""; for (let i = 0; i < img.length; i += 8192) bin += String.fromCharCode(...img.subarray(i, i + 8192));
+  return btoa(bin);
+}
+
+// ---------------------------------------------------------------- fingerprint template (legacy RAW_V1)
+function fpTemplate(studentNo, finger, wrong, noise) {
+  const seedStr = wrong ? "wrong-" + Math.random() : `TAMS-SIM|${studentNo}|${finger}`;
+  let h = 2166136261; for (const c of seedStr) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); }
+  const rnd = () => { h |= 0; h = h + 0x6D2B79F5 | 0; let t = Math.imul(h ^ h >>> 15, 1 | h); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  const bytes = new Uint8Array(512); /* AS608 character file size */ for (let i = 0; i < bytes.length; i++) bytes[i] = rnd() * 256;
+  for (let i = 0; i < noise; i++) bytes[Math.floor(Math.random() * bytes.length)] ^= 1 + Math.floor(Math.random() * 255);
+  return btoa(Array.from(bytes, b => String.fromCharCode(b)).join(""));
+}
+
+// ---------------------------------------------------------------- camera
+let stream = null; const cam = $("cam"), cx = cam.getContext("2d");
+async function capture() {
+  if (stream) { cx.drawImage($("video"), 0, 0, cam.width, cam.height); }
+  else { // ponytail: generated frame when there is no webcam
+    const g = cx.createLinearGradient(0, 0, cam.width, cam.height); g.addColorStop(0, "#4a6fa5"); g.addColorStop(1, "#e0b84c");
+    cx.fillStyle = g; cx.fillRect(0, 0, cam.width, cam.height); cx.fillStyle = "#fff"; cx.font = "20px sans-serif";
+    cx.fillText("TAMS sim photo", 14, 40); cx.fillText(new Date().toLocaleTimeString(), 14, 70); cx.fillText(cfg.studentNo + " / " + cfg.tagUid.slice(0, 8), 14, 100);
+  }
+  return new Promise(res => cam.toBlob(b => res(b), "image/jpeg", 0.8));
+}
+capture();
+$("shoot").onclick = async () => { const b = await capture(); logNote(`Captured test frame ${b ? b.size : 0} bytes`); };
+$("camStart").onclick = async () => {
+  try { stream = await navigator.mediaDevices.getUserMedia({ video: true }); const v = $("video"); v.srcObject = stream; v.hidden = false; cam.hidden = true; await v.play(); logNote("Real camera on"); }
+  catch (e) { stream = null; logNote("Camera unavailable (" + e.name + "): using generated frames"); }
+};
+
+// ---------------------------------------------------------------- heartbeat
+const t0 = Date.now(); let hbTimer;
+async function heartbeat() {
+  const codes = [$("hbKiosk").checked && cfg.station, $("hbRoom").checked && cfg.roomStation].filter(Boolean); let msg = [];
+  for (const c of codes) {
+    const r = await api("POST", `/stations/${encodeURIComponent(c)}/heartbeat`, { hw: true, tag: "HB", key: c === cfg.roomStation && c !== cfg.station, body: { firmwareVersion: "1.0.3-sim", rssi: -55 - Math.floor(Math.random() * 15), uptimeS: Math.floor((Date.now() - t0) / 1000), freeHeap: 180000 - Math.floor(Math.random() * 5000) } });
+    msg.push(`${c}: ${r.offline ? "blocked" : r.status}`);
+  }
+  $("hbStatus").textContent = "Last heartbeat " + new Date().toLocaleTimeString() + " " + msg.join(", ");
+}
+function hbSchedule() {
+  const base = Math.max(1, +cfg.hbInterval || 30), j = Math.max(0, +cfg.hbJitter || 0);
+  hbTimer = setTimeout(async () => { await heartbeat(); hbSchedule(); }, Math.max(500, (base + (Math.random() * 2 - 1) * j) * 1000));
+}
+$("hbNow").onclick = heartbeat;
+
+// ---------------------------------------------------------------- phone (instructor)
+let sr = { conn: [], live: false };
+const P = { items: [], rooms: [] };
+async function loadSignalR() {
+  if (window.signalR) return true;
+  return new Promise(res => {
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.7/signalr.min.js"; // pinned
+    s.onload = () => res(true); s.onerror = () => res(false); document.head.append(s);
+  });
+}
+const EVENTS = ["approval.requested","loan.created","loan.overdue","asset.statusChanged","anomaly.raised","anomaly.resolved","instructor.frozen","instructor.unfrozen","station.healthChanged","room.occupancyChanged","warning.issued"];
+async function connectHub(actor) {
+  const a = actors[actor]; if (a.hub) { try { await a.hub.stop(); } catch { /* ignore */ } a.hub = null; }
+  if (!await loadSignalR()) { setLive(false, "no SignalR client (offline CDN): polling"); return; }
+  const hub = new signalR.HubConnectionBuilder().withUrl(url("/hubs/live"), { accessTokenFactory: () => a.token }).withAutomaticReconnect().build();
+  for (const e of EVENTS) hub.on(e, p => { addEvent(`${a.tag} ${e}`, p); if (e === "approval.requested") refreshPending(); if (/loan|asset/.test(e)) refreshLoansSoon(); });
+  hub.onclose(() => setLive(false, "hub closed: polling")); hub.onreconnected(() => setLive(true, "reconnected"));
+  try { await hub.start(); a.hub = hub; setLive(true, "SignalR connected"); logNote(`${a.tag} SignalR connected`); }
+  catch (e) { setLive(false, "hub failed (" + e.message + "): polling"); }
+}
+function setLive(on, text) { sr.live = on; const el = $("phLive"); el.textContent = text; el.className = "pill " + (on ? "ok" : "warn"); }
+function addEvent(name, p) { const d = document.createElement("div"); d.textContent = new Date().toLocaleTimeString() + " " + name + " " + JSON.stringify(p).slice(0, 160); $("events").prepend(d); while ($("events").childElementCount > 60) $("events").lastChild.remove(); }
+async function phoneLogin() {
+  const ok = await login("phone", cfg.phEmail, $("phPw").value);
+  $("phWho").textContent = ok ? `${actors.phone.user.firstName} ${actors.phone.user.lastName} (${actors.phone.user.role})` : "login failed";
+  if (ok) { connectHub("phone"); refreshPending(); } return ok;
+}
+$("phLogin").onclick = phoneLogin;
+async function refreshPending() {
+  if (!actors.phone.token) return;
+  const r = await api("GET", "/approvals/pending", { actor: "phone", poll: true }); if (!r.ok) return;
+  P.items = r.data.items; $("phFreeze").textContent = r.data.frozen ? "FROZEN: " + r.data.freezes.map(f => f.reason + " " + f.loanNo).join(", ") : "";
+  for (const it of P.items) for (const ro of it.roomOptions) if (!P.rooms.some(x => x.id === ro.id)) { P.rooms.push(ro); }
+  fillRooms(); renderPending();
+}
+function fillRooms() { const s = $("scRoom"), cur = s.value; s.length = 1; for (const r of P.rooms) s.add(new Option(`${r.code} ${r.name}`, r.id)); s.value = cur; }
+function renderPending() {
+  const box = $("pending"); box.textContent = "";
+  if (!P.items.length) { box.textContent = "No approval requests yet. They appear here when a student borrows an item."; box.className = "hint"; return; }
+  for (const it of P.items) {
+    const c = document.createElement("div"); c.className = "card";
+    const t = document.createElement("div"); t.textContent = `${it.student.fullName} (${it.student.studentNo}, ${it.student.sectionCode}) wants ${it.asset.assetCode} ${it.asset.name}`;
+    const img = document.createElement("img"); img.alt = "Checkout photo"; img.style.cssText = "max-width:140px;display:block;margin:4px 0;border-radius:4px";
+    fetch(url(`/approvals/${it.sessionId}/photo`), { headers: { Authorization: "Bearer " + actors.phone.token } }).then(r => r.ok ? r.blob() : null).then(b => { if (b) img.src = URL.createObjectURL(b); });
+    const room = document.createElement("select"); room.setAttribute("aria-label", "Destination room");
+    for (const ro of it.roomOptions) room.add(new Option(`${ro.code} ${ro.name}`, ro.id)); room.value = it.defaultRoomId || (it.roomOptions[0] || {}).id || "";
+    const len = document.createElement("select"); len.setAttribute("aria-label", "Class length");
+    for (const l of it.classLengthOptions) len.add(new Option(`${l / 60} h`, l)); len.value = it.defaultClassLengthMinutes;
+    const ap = document.createElement("button"); ap.textContent = "Approve"; ap.className = "primary"; ap.onclick = () => decide(it.sessionId, true, room.value, +len.value);
+    const de = document.createElement("button"); de.textContent = "Decline"; de.className = "danger"; de.onclick = () => decide(it.sessionId, false);
+    const left = document.createElement("span"); left.className = "hint"; left.textContent = " expires " + new Date(it.expiresAt).toLocaleTimeString();
+    const row = document.createElement("div"); row.className = "row"; row.append(room, len, ap, de, left); c.append(t, img, row); box.append(c);
+  }
+}
+async function decide(sessionId, approve, roomId, minutes) {
+  const r = await api("POST", `/approvals/${sessionId}/${approve ? "approve" : "decline"}`, { actor: "phone", body: approve ? { destinationRoomId: roomId, classLengthMinutes: minutes } : {} });
+  await refreshPending(); return r;
+}
+setInterval(() => { if (!sr.live) refreshPending(); }, 3000);   // polling fallback
+setInterval(() => { if (sr.live) refreshPending(); }, 15000);
+
+// ---------------------------------------------------------------- staff / loans
+async function staffLogin() {
+  const ok = await login("staff", cfg.stEmail, $("stPw").value);
+  $("stWho").textContent = ok ? `${actors.staff.user.firstName} (${actors.staff.user.role}).` : "login failed.";
+  if (ok) { connectHub("staff"); refreshLoans(); loadStudents(); } return ok;
+}
+$("stLogin").onclick = staffLogin;
+let loanTimer; function refreshLoansSoon() { clearTimeout(loanTimer); loanTimer = setTimeout(refreshLoans, 400); }
+async function refreshLoans() {
+  if (!actors.staff.token) return;
+  const r = await api("GET", "/loans?pageSize=15", { actor: "staff", poll: true }); if (!r.ok) return;
+  const tb = $("loans").tBodies[0]; tb.textContent = "";
+  for (const l of r.data.items) {
+    const tr = tb.insertRow(); tr.className = "click"; tr.tabIndex = 0;
+    const vals = [l.loanNo, l.asset && l.asset.assetCode, l.student ? l.student.studentNo : (l.coordinator ? "coord." : ""), l.status, l.custodyState, l.destinationRoom && l.destinationRoom.code, l.dueAt && new Date(l.dueAt).toLocaleTimeString()];
+    for (const v of vals) tr.insertCell().textContent = v ?? "";
+    const open = async () => { const d = await api("GET", `/loans/${l.id}`, { actor: "staff" }); const p = $("loanDetail"); p.hidden = false; p.textContent = JSON.stringify(d.data, null, 2); };
+    tr.onclick = open; tr.onkeydown = e => { if (e.key === "Enter") open(); };
+  }
+  const h = await api("GET", "/stations/health", { actor: "staff", poll: true });
+  if (h.ok) $("health").textContent = h.data.stations.map(s => `${s.stationCode}: ${s.health}${s.secondsSinceHeartbeat != null ? " (" + Math.round(s.secondsSinceHeartbeat) + "s ago)" : ""}`).join("   ");
+  return r.data.items;
+}
+$("loansRefresh").onclick = refreshLoans;
+setInterval(() => { if ($("loansAuto").checked) refreshLoans(); }, 5000);
+async function loadStudents() {
+  const r = await api("GET", "/students?pageSize=100", { actor: "staff", poll: true }); if (!r.ok) return;
+  actors.staff.students = r.data.items; const dl = $("studentList"); dl.textContent = "";
+  for (const s of r.data.items) dl.append(new Option(`${s.firstName} ${s.lastName}`, s.studentNo));
+}
+
+// ---------------------------------------------------------------- room reader + enrollment
+async function roomTap(tag) {
+  const r = await api("POST", `/stations/${encodeURIComponent(cfg.roomStation)}/scans`, { hw: true, tag: "ROOM", key: true, body: { tagUid: tag || cfg.roomTagUid } });
+  if (r.ok) {
+    const good = r.data.signal === "SUCCESS"; $("roomLed").className = "led " + (good ? "green" : "red"); $("roomRes").textContent = `${r.data.result} ${r.data.assetCode || ""}`;
+    (good ? SOUNDS.OK : SOUNDS.DENY)(); setTimeout(() => { $("roomLed").className = "led"; }, 2500); refreshLoansSoon();
+    if (good) { paintSteps(7); coach("", "Room check-in recorded. The flow is complete."); } else { paintSteps(6, true); coach("tapRoom", "Room reader refused it (" + r.data.result + ")."); }
+  }
+  return r;
+}
+$("tapRoom").onclick = () => roomTap();
+async function studentByNo(no) { if (!actors.staff.students) await loadStudents(); return (actors.staff.students || []).find(s => s.studentNo === no); }
+async function startEnrollment(studentNo, finger) {
+  if (!actors.staff.token && !await staffLogin()) { logNote("Enrollment needs a staff login"); return null; }
+  const st = await studentByNo(studentNo); if (!st) { logNote("Student not found: " + studentNo); return null; }
+  const stations = await api("GET", "/stations?pageSize=100", { actor: "staff" });
+  const sta = stations.ok && stations.data.items.find(s => s.stationCode === cfg.station.toUpperCase()); if (!sta) { logNote("Station not found: " + cfg.station); return null; }
+  const r = await api("POST", "/enrollment/sessions", { actor: "staff", body: { studentId: st.id, stationId: sta.id, fingerIndex: finger } });
+  if (!r.ok) return null;
+  K.session = null; K.idleShown = false;
+  for (let i = 0; i < 12 && !K.session; i++) { const p = await kiosk("GET", `/kiosk/${stationCode()}/session`, { poll: true }); if (p.ok && p.data.session) render(p.data.session); else await sleep(500); }
+  return K.view;
+}
+$("enroll").onclick = () => startEnrollment(cfg.studentNo, +cfg.fingerIdx);
+async function ensureEnrolled(studentNo, finger) {
+  if (!actors.staff.token && !await staffLogin()) { logNote("No staff login: assuming " + studentNo + " is enrolled"); return; }
+  const st = await studentByNo(studentNo); if (!st) return;
+  const f = await api("GET", `/students/${st.id}/fingerprints`, { actor: "staff" });
+  if (f.ok && f.data.items.some(x => x.fingerIndex === finger)) return;
+  logNote("Enrolling " + studentNo + " finger " + finger);
+  if (K.session) await kCancel();
+  const v = await startEnrollment(studentNo, finger); if (!v) return;
+  await kFinger(); if (K.view && K.view.nextStep === "CONFIRM") await kConfirm();
+}
+
+// ---------------------------------------------------------------- scenarios
+const until = async (fn, ms = 20000, step = 300) => { const t = Date.now(); for (;;) { const v = await fn(); if (v) return v; if (Date.now() - t > ms) return null; await sleep(step); } };
+const cur = () => K.view;
+const finished = () => cur() && cur().finished;
+/** One checkout through all panels. o: {card, tag, student, wrong, camFault, decision:'approve'|'decline'|'ignore', room, minutes, roomTap} */
+async function checkoutFlow(o = {}) {
+  const prevFault = $("camFault").checked, prevWrong = $("wrongFinger").checked;
+  const student = o.student || cfg.studentNo, tag = o.tag || cfg.tagUid;
+  const restore = () => { $("camFault").checked = prevFault; $("wrongFinger").checked = prevWrong; };
+  try {
+    if (o.decision !== "none-phone" && !actors.phone.token) await phoneLogin();
+    if (!o.skipEnroll && !o.wrong) await ensureEnrolled(student, +cfg.fingerIdx);
+    if (K.session) await kCancel();
+    $("camFault").checked = !!o.camFault; // before the tag tap: the PHOTO step fires straight after it
+    K.idleShown = false; await kStart(null, o.card || cfg.cardUid); if (finished()) return cur();
+    const prevStudent = cfg.studentNo; cfg.studentNo = student;
+    $("wrongFinger").checked = !!o.wrong;
+    try { for (let i = 0; i < 3 && cur().nextStep === "FINGERPRINT"; i++) await kFinger(); } finally { cfg.studentNo = prevStudent; }
+    if (finished()) return cur();
+    await kTag(tag); if (finished()) return cur();
+    if (cur().nextStep === "PHOTO") await until(() => cur().nextStep !== "PHOTO", 8000, 200);
+    if (finished() || o.decision === "ignore") { return cur(); }
+    const it = await until(async () => { await refreshPending(); return P.items.find(x => x.sessionId === cur().sessionId); }, 8000, 500);
+    if (!it) { logNote("Approval request never reached the phone"); return cur(); }
+    const room = (o.roomCode && (it.roomOptions.find(r => r.code === o.roomCode) || {}).id) || $("scRoom").value || it.roomOptions[0].id;
+    await decide(it.sessionId, o.decision !== "decline", room, o.minutes || +$("scLen").value);
+    await until(() => cur().nextStep !== "WAIT", 15000, 500);
+    if (cur().nextStep === "CONFIRM") { await kConfirm(); if (o.roomTap && cur().status === "COMPLETED") await roomTap(tag); }
+    return cur();
+  } finally { restore(); }
+}
+async function returnFlow(o = {}) {
+  await ensureEnrolled(o.student || cfg.studentNo, +cfg.fingerIdx);
+  if (K.session) await kCancel();
+  K.idleShown = false; await kStart("RETURN"); if (finished()) return cur();
+  const ps = cfg.studentNo; cfg.studentNo = o.student || ps;
+  try { await kFinger(); } finally { cfg.studentNo = ps; }
+  if (finished()) return cur(); await kTag(o.tag || cfg.tagUid); return cur();
+}
+const SCEN = [
+  ["Happy-path checkout + room check-in", async () => checkoutFlow({ roomTap: true }), r => r.status === "COMPLETED"],
+  ["Return (RETURN session)", async () => returnFlow(), r => r.status === "COMPLETED"],
+  ["Denied: unknown card", async () => { if (K.session) await kCancel(); K.idleShown = false; await kStart(null, "DEADBEEF"); return cur(); }, r => r.failureCode === "CARD_UNKNOWN"],
+  ["Denied: unknown fingerprint (3 tries)", async () => checkoutFlow({ wrong: true, skipEnroll: true }), r => r.failureCode === "FINGERPRINT_NOT_RECOGNIZED"],
+  ["Denied: unknown item tag", async () => checkoutFlow({ tag: "0000DEAD0000" }), r => r.failureCode === "TAG_UNKNOWN"],
+  ["Denied: camera error", async () => checkoutFlow({ camFault: true }), r => r.failureCode === "PHOTO_FAILED"],
+  ["Denied: instructor declines", async () => checkoutFlow({ decision: "decline" }), r => r.failureCode === "APPROVAL_DECLINED"],
+  ["Denied: approval timeout (waits)", async () => approvalTimeout(), r => r.failureCode === "APPROVAL_TIMEOUT"],
+  ["Denied: loan limit (2nd checkout)", async () => { const a = await checkoutFlow({}); if (a.status !== "COMPLETED") return a; const second = await checkoutFlow({ tag: "04A1B2C3D4E5F6" }); await returnFlow(); return second; }, r => r.failureCode === "LOAN_LIMIT_REACHED"],
+  ["Denied: item not on loan (return)", async () => returnFlow({ tag: "04A1B2C3D4E5F6" }), r => r.failureCode === "NOT_ON_LOAN"],
+  ["Wrong-room scan (approve LAB-102)", async () => { const a = await checkoutFlow({ roomCode: "LAB-102" }); if (a.status === "COMPLETED") { const t = await roomTap(cfg.tagUid); await returnFlow(); return { status: "WRONG_ROOM check", failureCode: t.data && t.data.result }; } return a; }, r => r.failureCode === "WRONG_ROOM"],
+  ["Enrollment on the kiosk (2024-0004, finger 8)", async () => {
+    if (!actors.staff.token && !await staffLogin()) return { status: "NO_STAFF_LOGIN" };
+    const st = await studentByNo("2024-0004"); if (!st) return { status: "NO_STUDENT" };
+    const drop = () => api("DELETE", `/students/${st.id}/fingerprints/8`, { actor: "staff" });
+    await drop();   // 404 when there is none; the scenario starts from a clean finger
+    if (K.session) await kCancel();
+    const prev = [cfg.studentNo, cfg.fingerIdx]; cfg.studentNo = "2024-0004"; cfg.fingerIdx = 8;
+    try {
+      if (!await startEnrollment("2024-0004", 8)) return { status: "NO_SESSION" };
+      await kFinger(); if (cur().nextStep === "CONFIRM") await kConfirm();
+      const f = await api("GET", `/students/${st.id}/fingerprints`, { actor: "staff" });
+      const stored = f.ok && f.data.items.some(x => x.fingerIndex === 8);
+      await drop();
+      return { ...cur(), stored };
+    } finally { [cfg.studentNo, cfg.fingerIdx] = prev; }
+  }, r => r.status === "COMPLETED" && r.stored],
+  ["Event batch checkout + bulk return (coordinator)", async () => {
+    if (!actors.staff.token && !await staffLogin()) return { status: "NO_STAFF_LOGIN" };
+    if (!actors.phone.token) await phoneLogin();
+    const now = Date.now();   // the seeded instructor is an event coordinator; the event runs now
+    const ev = await api("POST", "/events", { actor: "staff", body: { title: "Sim event " + new Date().toLocaleTimeString(), venueText: "Sim hall",
+      startsAt: new Date(now - 60000).toISOString(), endsAt: new Date(now + 3 * 3600000).toISOString(), coordinatorUserId: actors.phone.user.id } });
+    if (!ev.ok) return { status: "EVENT_CREATE_FAILED", failureCode: ev.data && ev.data.code };
+    try {
+      if (K.session) await kCancel();
+      K.idleShown = false; await kStart(null, "04A1B2C3"); if (finished()) return cur();
+      if (cur().type !== "EVENT_BATCH") return { status: "WRONG_TYPE", failureCode: cur().type };
+      await kTag("E2000017221101441890"); await kTag("04A1B2C3D4E5F6"); await kConfirm();
+      if (cur().status !== "COMPLETED") return cur();
+      K.idleShown = false; await kStart("EVENT_RETURN", "04A1B2C3"); if (finished()) return cur();
+      await kTag("E2000017221101441890"); await kTag("04A1B2C3D4E5F6"); await kConfirm();
+      return cur();
+    } finally { await api("POST", `/events/${ev.data.id}/close`, { actor: "staff" }); }
+  }, r => r.status === "COMPLETED"],
+  ["Wi-Fi drop: kiosk goes Offline, then recovers (waits)", async () => {
+    if (!actors.staff.token && !await staffLogin()) return { status: "NO_STAFF_LOGIN" };
+    const health = async () => { const h = await api("GET", "/stations/health", { actor: "staff", poll: true }); const s = h.ok && h.data.stations.find(x => x.stationCode === cfg.station.toUpperCase()); return s ? String(s.health).toUpperCase() : "?"; };
+    await heartbeat(); await sleep(500); const was = await health();
+    let off = false;
+    $("wifi").checked = false; logNote("Wi-Fi OFF");
+    try { off = !!await until(async () => (await health()) === "OFFLINE", 150000, 3000); }
+    finally { $("wifi").checked = true; logNote("Wi-Fi ON"); }
+    await heartbeat(); await sleep(500); const back = await health();
+    return { status: `${was} > ${off ? "OFFLINE" : "never offline"} > ${back}`, failureCode: null };
+  }, r => /^ONLINE > OFFLINE > ONLINE$/.test(r.status)],
+];
+async function approvalTimeout() {
+  let prior = null;
+  if (actors.staff.token || await staffLogin()) {   // shorten the timeout to the 30 s minimum when we may (admin)
+    const g = await api("GET", "/settings/approval_timeout_seconds", { actor: "staff" });
+    if (g.ok) { prior = g.data.value ?? (g.data.item && g.data.item.value); const p = await api("PUT", "/settings/approval_timeout_seconds", { actor: "staff", body: { value: 30 } }); if (!p.ok) prior = null; }
+  }
+  try { const r = await checkoutFlow({ decision: "ignore" }); if (r.finished) return r; logNote("Waiting for the approval to time out..."); await until(() => finished(), 150000, 1000); return cur(); }
+  finally { if (prior != null) await api("PUT", "/settings/approval_timeout_seconds", { actor: "staff", body: { value: prior } }); }
+}
+let running = false;
+const FEATURED = { "Happy-path checkout + room check-in": "Borrow an item: card, fingerprint, tag, photo, approval, confirm, room check-in", "Return (RETURN session)": "Return the item: fingerprint, then tag" };
+for (const [name] of SCEN) {
+  const b = document.createElement("button"); b.dataset.name = name; b.onclick = () => runScenario(name);
+  if (FEATURED[name]) {
+    b.className = "big primary"; b.append(Object.assign(document.createElement("span"), { textContent: name }), Object.assign(document.createElement("small"), { textContent: FEATURED[name] }));
+    $("scenFeat").append(b);
+  } else { b.textContent = name; (/^(Denied|Wrong-room)/.test(name) ? $("scenDenied") : $("scenMore")).append(b); }
+}
+async function runScenario(name) {
+  if (running) return; running = true; const [, fn, check] = SCEN.find(s => s[0] === name);
+  document.body.classList.add("running"); for (const b of $("scenBox").querySelectorAll("button")) b.disabled = true;
+  $("scStatus").className = "result run"; $("scStatus").textContent = "Running: " + name + " ..."; logNote("SCENARIO START " + name);
+  let res = null, err = null;
+  try { res = await fn(); } catch (e) { err = e; }
+  const pass = !err && res && check(res);
+  logNote(`SCENARIO ${pass ? "PASS" : "FAIL"} ${name}${res ? ` (status ${res.status}, failureCode ${res.failureCode || "-"})` : ""}${err ? " " + err : ""}`);
+  $("scStatus").className = "result " + (pass ? "ok" : "bad"); $("scStatus").textContent = `${pass ? "PASS" : "FAIL"}: ${name}${res && res.failureCode ? " (" + res.failureCode + ")" : ""}`;
+  running = false; document.body.classList.remove("running"); for (const b of $("scenBox").querySelectorAll("button")) b.disabled = false; refreshLoansSoon();
+  document.body.dataset.result = JSON.stringify({ name, pass: !!pass, status: res && res.status, failureCode: res && res.failureCode });
+  return pass;
+}
+// Reset database: two clicks (the first arms the button for 4 s) instead of a modal dialog.
+let resetArmed = 0;
+$("resetDb").onclick = async () => {
+  const b = $("resetDb");
+  if (!resetArmed) { resetArmed = setTimeout(() => { resetArmed = 0; b.textContent = "Reset database"; }, 4000); b.textContent = "Click again to wipe all data"; return; }
+  clearTimeout(resetArmed); resetArmed = 0; b.disabled = true; b.textContent = "Resetting...";
+  $("scStatus").className = "result run"; $("scStatus").textContent = "Dropping the database and seeding it again ...";
+  if (!actors.staff.token) await staffLogin();   // the reset needs the admin's token
+  const headers = { "X-Sim-Reset": "yes" }; if (actors.staff.token) headers.Authorization = "Bearer " + actors.staff.token;
+  let r = null; try { r = await fetch("/sim/reset", { method: "POST", headers }); } catch { /* shown below */ }
+  if (r && r.ok) { $("scStatus").className = "result ok"; $("scStatus").textContent = "Database reset. Reloading ..."; setTimeout(() => location.reload(), 600); return; }
+  $("scStatus").className = "result bad"; $("scStatus").textContent = r && (r.status === 401 || r.status === 403)
+    ? "Reset needs the ADMIN account in the staff panel (status " + r.status + ")."
+    : "Reset failed (" + (r ? r.status : "network error") + "). Check the API log.";
+  b.disabled = false; b.textContent = "Reset database";
+};
+window.SIM = { runScenario, SCEN, api, actors, K, checkoutFlow, returnFlow, cfg, phoneLogin, staffLogin };
+
+// ---------------------------------------------------------------- boot
+lcdSet(["TAMS Counter", "Tap auth card", "", ""]);
+paintSteps(0); coachFor(null);
+// demo accounts are pre-filled, so sign them in on load (the Account sections change them)
+if (!device || device === "phone") phoneLogin();
+if (!device || device === "admin") staffLogin();
+if (!device || device === "kiosk") pollLoop();   // only the kiosk polls its session
+if (!device || device === "kiosk" || device === "room") heartbeat().then(hbSchedule);
+// #run=<scenario index> auto-runs one scenario (headless smoke test): sets body[data-result] when done.
+const m = /run=(\d+)/.exec(location.hash); if (m && SCEN[+m[1]]) setTimeout(() => runScenario(SCEN[+m[1]][0]), 1500);
+</script>
+</body>
+</html>
