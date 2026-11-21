@@ -48,6 +48,8 @@ public static class DamageEndpoints
             loan = new { loan.Id, loan.LoanNo, type = Support.Label(loan.Type), status = Support.Label(loan.Status), loan.CheckedOutAt, loan.ReturnedAt },
             borrower,
             hasLiability = await db.Liabilities.AnyAsync(l => l.LoanId == loan.Id, ct),
+            hasDamageLiability = await db.Liabilities.AnyAsync(l => l.LoanId == loan.Id && l.Reason == LiabilityReason.Damage, ct),
+            hasMissingLiability = await db.Liabilities.AnyAsync(l => l.LoanId == loan.Id && l.Reason == LiabilityReason.Missing, ct),
         };
     }
 
@@ -66,8 +68,9 @@ public static class DamageEndpoints
             return Problems.Conflict("ASSET_NOT_DAMAGED", "Mark the asset DAMAGED before assigning damage liability.");
         var loan = await db.Loans.AsNoTracking().FirstOrDefaultAsync(l => l.Id == req.LoanId && l.AssetId == id, ct);
         if (loan is null) return Problems.NotFound("LOAN_NOT_FOUND", "That asset has no such loan.");
-        if (await db.Liabilities.AnyAsync(l => l.LoanId == loan.Id, ct))
-            return Problems.Conflict("LIABILITY_EXISTS", "That loan already has a liability.");
+        // A loan can carry one MISSING and one DAMAGE liability, so only an earlier damage one blocks this.
+        if (await db.Liabilities.AnyAsync(l => l.LoanId == loan.Id && l.Reason == LiabilityReason.Damage, ct))
+            return Problems.Conflict("LIABILITY_EXISTS", "That loan already has a damage liability.");
 
         var liability = new Liability
         {

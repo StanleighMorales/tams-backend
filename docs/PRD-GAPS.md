@@ -41,7 +41,7 @@ About 23 to 25 days in all (estimate). Suggested order was: E6, E7, E8, E1, E5, 
 - **G2 station keys.** The grace period is an on/off setting (`station_key_required`, default 0), not a time window. With it at 0 a station that has a key can still scan without sending it, so the key only protects once the setting is 1. TECH_STAFF can rotate a key.
 - **E7 void.** The void operation covers event loans. A student's undo before the loan exists just removes the item from the session.
 - **E8 items.** TECH_STAFF can edit only `max_items_per_transaction`. Penalties dedupe by transaction (loans sharing the session). A long item code on the confirm screen is cut to fit 20 columns ("3 items +2 more").
-- **E1/E5.** `liabilities.student_id` is now nullable (check: exactly one of student, user or name is set). One liability per loan remains (unique `loan_id`), so a loan already declared missing cannot also get a damage liability (`LIABILITY_EXISTS`); open decision. The flag and override rule applies to event borrowers only.
+- **E1/E5.** `liabilities.student_id` is now nullable (check: exactly one of student, user or name is set). A loan can carry one MISSING and one DAMAGE liability (index `(loan_id, reason)`, decided 2026-11-20); settling the damage one does not lift the hold or freeze. The flag and override rule applies to event borrowers only.
 - **E4.** Station-offline notices now also reach custodians.
 - **G3/G4/G5/G6.** See the NOT DONE lists in the Jira comments and `docs/STATUS.md`. No NFR is claimed as met.
 

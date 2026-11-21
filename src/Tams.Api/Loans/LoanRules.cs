@@ -374,7 +374,7 @@ static class LoanRules
         // Who owes: the student (or the student linked as event borrower), else the typed event borrower,
         // else the event coordinator (PRD-GAPS Q1). Only a student gets the hold.
         var sid = loan.StudentId ?? loan.BorrowerStudentId;
-        if (!await db.Liabilities.AnyAsync(x => x.LoanId == loan.Id, ct))
+        if (!await db.Liabilities.AnyAsync(x => x.LoanId == loan.Id && x.Reason == LiabilityReason.Missing, ct))
         {
             var liability = new Liability
             {
