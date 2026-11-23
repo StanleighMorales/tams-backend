@@ -64,6 +64,16 @@ public class DevSeedAndCorsTests(ApiFixture api)
     }
 
     [Fact]
+    public async Task The_signalr_negotiate_preflight_allows_credentials()
+    {
+        var res = await api.NoAuth().SendAsync(HttpMethod.Options, "/hubs/live/negotiate", null,
+            ("Origin", "http://localhost:5173"),
+            ("Access-Control-Request-Method", "POST"),
+            ("Access-Control-Request-Headers", "authorization,x-signalr-user-agent")).Expect(204);
+        Assert.Equal("true", res.Headers.GetValues("Access-Control-Allow-Credentials").Single());
+    }
+
+    [Fact]
     public async Task An_unlisted_origin_gets_no_cors_header()
     {
         var res = await api.NoAuth().SendAsync(HttpMethod.Get, "/api/health", null, ("Origin", "http://evil.example")).Expect(200);

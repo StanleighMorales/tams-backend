@@ -34,11 +34,12 @@ builder.Services.AddTamsPolicies();
 
 // Browser front ends (TanStack Router on Vite) run on another origin, so they need CORS. Cors:Origins is a
 // comma-separated list (env var Cors__Origins); Development defaults to the Vite port. Empty means no CORS.
-// Auth is a Bearer header, not a cookie, so credentials are not allowed.
+// Auth is a Bearer header, not a cookie, but SignalR's /hubs/live/negotiate is fetched with credentials, so
+// the browser needs Access-Control-Allow-Credentials (origins are explicit, never *).
 var corsOrigins = (builder.Configuration["Cors:Origins"] ?? "")
     .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 if (corsOrigins.Length > 0)
-    builder.Services.AddCors(o => o.AddDefaultPolicy(p => p.WithOrigins(corsOrigins).AllowAnyHeader().AllowAnyMethod()));
+    builder.Services.AddCors(o => o.AddDefaultPolicy(p => p.WithOrigins(corsOrigins).AllowAnyHeader().AllowAnyMethod().AllowCredentials()));
 
 var connectionString = builder.Configuration.GetConnectionString("Default")
     ?? throw new InvalidOperationException(
