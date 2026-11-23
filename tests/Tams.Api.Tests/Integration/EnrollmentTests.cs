@@ -173,6 +173,15 @@ public class EnrollmentTests(ApiFixture api)
     }
 
     [Fact]
+    public async Task Kiosk_accepts_the_zk9500_sensor_model()
+    {
+        var s = await NewSetup();
+        var id = await StartSession(s);
+
+        await Kiosk(HttpMethod.Post, $"{id}/fingerprint", s, $$"""{"template":"{{Template}}","sensorModel":"ZK9500","qualityScore":90}""").Expect(200);
+    }
+
+    [Fact]
     public async Task Kiosk_steps_out_of_order_are_409()
     {
         var s = await NewSetup();
