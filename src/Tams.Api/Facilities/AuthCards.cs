@@ -19,6 +19,9 @@ record CardDto(Guid Id, string CardUid, Guid UserId, string Status, DateTimeOffs
 
 record CardReplaceResult(CardDto OldCard, CardDto NewCard);
 
+/// <summary>Why a card could not be issued; the web endpoint answers it as a problem, the kiosk tap as LCD text.</summary>
+public record CardProblem(string Code, string Detail);
+
 // auth_cards has no deleted_at: a card is never deleted, only moved to LOST or REVOKED, so the
 // history of who held which UID stays intact. Hence no DELETE or restore here.
 public static class AuthCardEndpoints
@@ -73,23 +76,32 @@ public static class AuthCardEndpoints
             return Problems.Validation(new Dictionary<string, string[]> { ["userId"] = ["Required."] });
         if (!RfidUid.TryNormalize(body.CardUid, out var uid)) return InvalidUid();
 
-        var ownerError = await CheckOwner(db, body.UserId.Value, ct);
-        if (ownerError is not null) return ownerError;
-        if (await UidInUse(db, uid, ct)) return Taken(uid);
+        var (card, problem) = await IssueAsync(db, http, uid, body.UserId.Value, Support.ActorId(http), ct);
+        return card is null ? ToResult(problem!) : Results.Created($"/auth-cards/{card.Id}", CardDto.From(card));
+    }
+
+    /// <summary>Issues a card to an instructor or coordinator (owner and UID checks included) and writes
+    /// AUTH_CARD_ISSUED as <paramref name="actor"/>. Shared by POST /auth-cards and the kiosk "Add card" tap.</summary>
+    internal static async Task<(AuthCard? Card, CardProblem? Problem)> IssueAsync(
+        TamsDbContext db, HttpContext http, string uid, Guid userId, Guid? actor, CancellationToken ct)
+    {
+        var ownerProblem = await OwnerProblem(db, userId, ct);
+        if (ownerProblem is not null) return (null, ownerProblem);
+        if (await UidInUse(db, uid, ct)) return (null, TakenProblem(uid));
 
         var card = new AuthCard
         {
             Id = Guid.NewGuid(),
             CardUid = uid,
-            UserId = body.UserId.Value,
+            UserId = userId,
             Status = CardStatus.Active,
             IssuedAt = DateTimeOffset.UtcNow,
         };
         db.AuthCards.Add(card);
-        Support.Audit(db, http, "AUTH_CARD_ISSUED", "auth_card", card.Id, null, CardDto.From(card));
+        Support.Audit(db, http, "AUTH_CARD_ISSUED", "auth_card", card.Id, null, CardDto.From(card), actor);
         try { await db.SaveChangesAsync(ct); }
-        catch (DbUpdateException ex) when (Support.IsUniqueViolation(ex)) { return Taken(uid); }
-        return Results.Created($"/auth-cards/{card.Id}", CardDto.From(card));
+        catch (DbUpdateException ex) when (Support.IsUniqueViolation(ex)) { return (null, TakenProblem(uid)); }
+        return (card, null);
     }
 
     static async Task<IResult> Update(Guid id, CardUpdate body, HttpContext http, TamsDbContext db, CancellationToken ct)
@@ -101,7 +113,9 @@ public static class AuthCardEndpoints
         var before = CardDto.From(card);
         card.Status = status;
         Support.Audit(db, http, "AUTH_CARD_UPDATED", "auth_card", card.Id, before, CardDto.From(card));
-        await db.SaveChangesAsync(ct);
+        // Re-activating an old row whose UID is active elsewhere breaks the active-only unique index.
+        try { await db.SaveChangesAsync(ct); }
+        catch (DbUpdateException ex) when (Support.IsUniqueViolation(ex)) { return Taken(card.CardUid); }
         return Results.Ok(CardDto.From(card));
     }
 
@@ -133,8 +147,8 @@ public static class AuthCardEndpoints
         if (body.OldStatus is not null && !TryInactive(body.OldStatus, out oldStatus)) return BadInactive("oldStatus");
 
         if (await UidInUse(db, uid, ct)) return Taken(uid);
-        var ownerError = await CheckOwner(db, old.UserId, ct);
-        if (ownerError is not null) return ownerError;
+        var ownerProblem = await OwnerProblem(db, old.UserId, ct);
+        if (ownerProblem is not null) return ToResult(ownerProblem);
 
         var before = CardDto.From(old);
         old.Status = oldStatus;
@@ -154,21 +168,27 @@ public static class AuthCardEndpoints
         return Results.Ok(new CardReplaceResult(CardDto.From(old), CardDto.From(card)));
     }
 
-    // The same UID must not be both an asset tag and an instructor card.
+    // The same UID must not be both an asset tag and an instructor card. Only ACTIVE cards count: a
+    // revoked or lost card keeps its row as history and its UID can be issued again.
     static async Task<bool> UidInUse(TamsDbContext db, string uid, CancellationToken ct) =>
-        await db.AuthCards.AnyAsync(c => c.CardUid == uid, ct) || await db.Assets.AnyAsync(a => a.DeletedAt == null && a.RfidTagUid == uid, ct);
+        await db.AuthCards.AnyAsync(c => c.CardUid == uid && c.Status == CardStatus.Active, ct)
+        || await db.Assets.AnyAsync(a => a.DeletedAt == null && a.RfidTagUid == uid, ct);
 
     // PRD 7.3: card owner is an instructor or coordinator.
-    static async Task<IResult?> CheckOwner(TamsDbContext db, Guid userId, CancellationToken ct)
+    internal static async Task<CardProblem?> OwnerProblem(TamsDbContext db, Guid userId, CancellationToken ct)
     {
         var u = await db.Users.AsNoTracking().Where(x => x.Id == userId && x.DeletedAt == null)
             .Select(x => new { x.Role, x.IsEventCoordinator, x.Status }).FirstOrDefaultAsync(ct);
-        if (u is null) return Problems.BadRequest("USER_NOT_FOUND", "userId does not match an existing user.");
-        if (u.Status != RecordStatus.Active) return Problems.BadRequest("USER_INACTIVE", "The user is inactive.");
+        if (u is null) return new("USER_NOT_FOUND", "userId does not match an existing user.");
+        if (u.Status != RecordStatus.Active) return new("USER_INACTIVE", "The user is inactive.");
         if (u.Role != UserRole.Instructor && !u.IsEventCoordinator)
-            return Problems.BadRequest("CARD_OWNER_NOT_INSTRUCTOR", "Authorization cards are issued to instructors or event coordinators.");
+            return new("CARD_OWNER_NOT_INSTRUCTOR", "Authorization cards are issued to instructors or event coordinators.");
         return null;
     }
+
+    static IResult ToResult(CardProblem p) => p.Code == "TAG_ALREADY_ASSIGNED"
+        ? Problems.Conflict(p.Code, p.Detail)
+        : Problems.BadRequest(p.Code, p.Detail);
 
     static bool TryInactive(string text, out CardStatus status) =>
         Support.TryParse(text, out status) && status != CardStatus.Active;
@@ -181,5 +201,7 @@ public static class AuthCardEndpoints
     static IResult InvalidUid() => Problems.BadRequest("INVALID_RFID_UID",
         $"UID must be hexadecimal, {RfidUid.MinLength} to {RfidUid.MaxLength} characters, even length (separators allowed).");
 
-    static IResult Taken(string uid) => Problems.Conflict("TAG_ALREADY_ASSIGNED", $"UID '{uid}' is already assigned.");
+    static IResult Taken(string uid) => ToResult(TakenProblem(uid));
+
+    internal static CardProblem TakenProblem(string uid) => new("TAG_ALREADY_ASSIGNED", $"UID '{uid}' is already assigned.");
 }

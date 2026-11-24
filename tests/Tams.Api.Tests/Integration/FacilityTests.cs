@@ -200,4 +200,156 @@ public class FacilityTests(ApiFixture api)
         var body = await admin.PostRawAsync($"/api/auth-cards/{card.Id()}/revoke", """{"status":"REVOKED"}""").Ok();
         Assert.Equal("REVOKED", body.GetProperty("status").GetString());
     }
+
+    // ------------------------------------------------------------ card enrollment at the kiosk ("Add card")
+
+    Task<System.Text.Json.JsonElement> PollKiosk(string code) =>
+        api.NoAuth().SendAsync(HttpMethod.Get, $"/api/kiosk/{code}/session", null, ("X-Station-Code", code)).Ok();
+
+    Task<HttpResponseMessage> TapCard(string code, Guid request, string uid, string? header = null) =>
+        api.NoAuth().SendAsync(HttpMethod.Post, $"/api/kiosk/{code}/card-enrollment/{request}/tap", $$"""{"cardUid":"{{uid}}"}""",
+            ("X-Station-Code", header ?? code));
+
+    async Task<(ApiClient Admin, Guid Owner, string Station)> CardKiosk()
+    {
+        var (admin, owner) = await CardOwner();
+        var (_, station) = await Seed.Station(admin, await Seed.Room(admin, storage: true));
+        return (admin, owner, station);
+    }
+
+    static bool IsNull(System.Text.Json.JsonElement e, string name) =>
+        e.GetProperty(name).ValueKind == System.Text.Json.JsonValueKind.Null;
+
+    [Fact]
+    public async Task Card_enrollment_switches_the_idle_kiosk_and_registers_the_next_tapped_card()
+    {
+        var (admin, owner, station) = await CardKiosk();
+        Assert.True(IsNull(await PollKiosk(station), "cardEnrollment"));
+
+        var request = await admin.PostRawAsync("/api/auth-cards/enrollment", $$"""{"userId":"{{owner}}"}""").Ok(201);
+        Assert.Equal("WAITING", request.GetProperty("status").GetString());
+
+        var idle = await PollKiosk(station);
+        Assert.Equal(request.Id(), idle.GetProperty("cardEnrollment").Id());
+        Assert.Equal("Add card for", idle.GetProperty("lcdLines")[0].GetString());
+
+        var uid = Seed.Hex(4);
+        var tap = await (await TapCard(station, request.Id(), uid)).Json();
+        Assert.Equal("COMPLETED", tap.GetProperty("status").GetString());
+        Assert.Equal("Card registered", tap.GetProperty("lcdLines")[0].GetString());
+
+        Assert.True(IsNull(await PollKiosk(station), "cardEnrollment"));
+        var done = await admin.GetAsync($"/api/auth-cards/enrollment/{request.Id()}").Ok();
+        Assert.Equal("COMPLETED", done.GetProperty("status").GetString());
+        Assert.Equal(uid, done.GetProperty("card").GetProperty("cardUid").GetString());
+
+        // The user now lists the card (users used to come back without authCards).
+        var user = await admin.GetAsync($"/api/users/{owner}").Ok();
+        Assert.Contains(user.GetProperty("authCards").EnumerateArray(), c => c.GetProperty("cardUid").GetString() == uid);
+        var listed = await admin.GetAsync($"/api/users?q={user.GetProperty("employeeNo").GetString()}").Ok();
+        Assert.Single(listed.GetProperty("items")[0].GetProperty("authCards").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task Card_enrollment_keeps_waiting_after_a_taken_card_and_can_be_cancelled()
+    {
+        var (admin, owner, station) = await CardKiosk();
+        var other = (await Seed.User(admin, "INSTRUCTOR")).Id;
+        var taken = Seed.Hex(4);
+        await admin.PostRawAsync("/api/auth-cards", $$"""{"cardUid":"{{taken}}","userId":"{{other}}"}""").Expect(201);
+
+        var request = (await admin.PostRawAsync("/api/auth-cards/enrollment", $$"""{"userId":"{{owner}}"}""").Ok(201)).Id();
+        var refused = await (await TapCard(station, request, taken)).Json();
+        Assert.Equal("WAITING", refused.GetProperty("status").GetString());
+        Assert.Equal("TAG_ALREADY_ASSIGNED", refused.GetProperty("failureCode").GetString());
+        var waiting = await admin.GetAsync($"/api/auth-cards/enrollment/{request}").Ok();
+        Assert.Equal("TAG_ALREADY_ASSIGNED", waiting.GetProperty("lastError").GetProperty("code").GetString());
+
+        var fresh = await (await TapCard(station, request, Seed.Hex(4))).Json();
+        Assert.Equal("COMPLETED", fresh.GetProperty("status").GetString());
+
+        // A finished request cannot be tapped again; cancelling it is a no-op.
+        await TapCard(station, request, Seed.Hex(4)).Expect(409, "CARD_ENROLLMENT_NOT_WAITING");
+        var again = await admin.PostEmptyAsync($"/api/auth-cards/enrollment/{request}/cancel").Ok();
+        Assert.Equal("COMPLETED", again.GetProperty("status").GetString());
+
+        var second = (await admin.PostRawAsync("/api/auth-cards/enrollment", $$"""{"userId":"{{owner}}"}""").Ok(201)).Id();
+        var cancelled = await admin.PostEmptyAsync($"/api/auth-cards/enrollment/{second}/cancel").Ok();
+        Assert.Equal("CANCELLED", cancelled.GetProperty("status").GetString());
+        Assert.True(IsNull(await PollKiosk(station), "cardEnrollment"));
+        await TapCard(station, second, Seed.Hex(4)).Expect(409, "CARD_ENROLLMENT_NOT_WAITING");
+    }
+
+    [Fact]
+    public async Task Card_enrollment_new_request_replaces_the_waiting_one()
+    {
+        var (admin, owner, station) = await CardKiosk();
+        var other = (await Seed.User(admin, "INSTRUCTOR")).Id;
+
+        var first = (await admin.PostRawAsync("/api/auth-cards/enrollment", $$"""{"userId":"{{owner}}"}""").Ok(201)).Id();
+        var second = (await admin.PostRawAsync("/api/auth-cards/enrollment", $$"""{"userId":"{{other}}"}""").Ok(201)).Id();
+
+        var old = await admin.GetAsync($"/api/auth-cards/enrollment/{first}").Ok();
+        Assert.Equal("CANCELLED", old.GetProperty("status").GetString());
+        Assert.Equal(second, (await PollKiosk(station)).GetProperty("cardEnrollment").Id());
+    }
+
+    [Fact]
+    public async Task Card_enrollment_is_for_instructors_staff_and_known_kiosks()
+    {
+        var (admin, owner, station) = await CardKiosk();
+        var custodian = (await Seed.User(admin, "CUSTODIAN")).Id;
+
+        await admin.PostRawAsync("/api/auth-cards/enrollment", "{}").Expect(400, "VALIDATION_FAILED");
+        await admin.PostRawAsync("/api/auth-cards/enrollment", $$"""{"userId":"{{Guid.NewGuid()}}"}""").Expect(400, "USER_NOT_FOUND");
+        await admin.PostRawAsync("/api/auth-cards/enrollment", $$"""{"userId":"{{custodian}}"}""").Expect(400, "CARD_OWNER_NOT_INSTRUCTOR");
+        await (await api.As("CUSTODIAN")).PostRawAsync("/api/auth-cards/enrollment", $$"""{"userId":"{{owner}}"}""").Expect(403);
+
+        var request = (await admin.PostRawAsync("/api/auth-cards/enrollment", $$"""{"userId":"{{owner}}"}""").Ok(201)).Id();
+        await TapCard(station, request, Seed.Hex(4), header: "NOT-THE-STATION").Expect(403, "STATION_NOT_AUTHENTICATED");
+        await TapCard(station, request, "ZZZ").Expect(400, "INVALID_RFID_UID");
+        await TapCard(station, Guid.NewGuid(), Seed.Hex(4)).Expect(404, "CARD_ENROLLMENT_NOT_FOUND");
+        await admin.GetAsync($"/api/auth-cards/enrollment/{Guid.NewGuid()}").Expect(404, "CARD_ENROLLMENT_NOT_FOUND");
+    }
+
+    // ------------------------------------------------------------ a revoked card's UID can be issued again
+
+    [Fact]
+    public async Task A_revoked_card_can_be_issued_again_and_the_old_row_stays_as_history()
+    {
+        var (admin, owner) = await CardOwner();
+        var other = (await Seed.User(admin, "INSTRUCTOR")).Id;
+        var uid = Seed.Hex(4);
+        var old = (await admin.PostRawAsync("/api/auth-cards", $$"""{"cardUid":"{{uid}}","userId":"{{owner}}"}""").Ok(201)).Id();
+        await admin.PostRawAsync($"/api/auth-cards/{old}/revoke", """{"status":"REVOKED"}""").Ok();
+
+        var again = (await admin.PostRawAsync("/api/auth-cards", $$"""{"cardUid":"{{uid}}","userId":"{{other}}"}""").Ok(201)).Id();
+        Assert.NotEqual(old, again);
+        Assert.Equal("REVOKED", (await admin.GetAsync($"/api/auth-cards/{old}").Ok()).GetProperty("status").GetString());
+
+        // Only one ACTIVE card per UID, and an old row cannot be switched back on beside it.
+        await admin.PostRawAsync("/api/auth-cards", $$"""{"cardUid":"{{uid}}","userId":"{{owner}}"}""").Expect(409, "TAG_ALREADY_ASSIGNED");
+        await admin.PutRawAsync($"/api/auth-cards/{old}", """{"status":"ACTIVE"}""").Expect(409, "TAG_ALREADY_ASSIGNED");
+
+        // The user that held it before still lists the revoked row.
+        var cards = (await admin.GetAsync($"/api/users/{owner}").Ok()).GetProperty("authCards");
+        Assert.Equal("REVOKED", cards[0].GetProperty("status").GetString());
+    }
+
+    [Fact]
+    public async Task The_kiosk_refuses_a_revoked_card_and_accepts_it_once_issued_again()
+    {
+        var rig = await KioskRig.Create(api);
+        var cards = await rig.Admin.GetAsync($"/api/auth-cards?userId={rig.InstructorId}").Ok();
+        await rig.Admin.PostEmptyAsync($"/api/auth-cards/{cards.GetProperty("items")[0].Id()}/revoke").Ok();
+
+        var denied = await rig.Start();
+        Assert.Equal("FAILED", KioskRig.Status(denied));
+        Assert.Equal("CARD_INACTIVE", denied.GetProperty("failureCode").GetString());
+
+        await rig.Admin.PostRawAsync("/api/auth-cards", $$"""{"cardUid":"{{rig.CardUid}}","userId":"{{rig.InstructorId}}"}""").Expect(201);
+        var open = await rig.Start();
+        Assert.Equal("AWAITING_FINGERPRINT", KioskRig.Status(open));
+        await rig.Cancel(KioskRig.SessionId(open));
+    }
 }

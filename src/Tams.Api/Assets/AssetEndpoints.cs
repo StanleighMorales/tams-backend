@@ -253,7 +253,7 @@ static class AssetEndpoints
 
         if (uid is not null)
         {
-            if (await db.AuthCards.AnyAsync(c => c.CardUid == uid, ct))
+            if (await db.AuthCards.AnyAsync(c => c.CardUid == uid && c.Status == CardStatus.Active, ct))
                 return Problems.Conflict("TAG_ALREADY_ASSIGNED", $"UID {uid} is already registered as an authorization card.");
             var tagRow = await db.Assets.Where(a => a.DeletedAt == null && a.Id != selfId && a.RfidTagUid == uid)
                 .Select(a => new { a.DeletedAt }).FirstOrDefaultAsync(ct);
