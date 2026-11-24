@@ -143,6 +143,8 @@ Now:
 | `src/Tams.Api/Data/Migrations/20261124183403_ActiveCardUidUnique*.cs`, snapshot | **New** migration. |
 | `src/Tams.Api/Program.cs` | Registers `CardEnrollmentDesk` as a singleton. |
 | `tests/Tams.Api.Tests/Integration/FacilityTests.cs` | 6 new tests (below). |
+| `src/Tams.Api/Sim/kiosk-sim.html` | Add card and Tap a new card buttons in the card reader panel, card enrollment mode on the idle poll, and the scenario "Add card at the kiosk (Iris)" (see `docs/SIMULATOR.md`). |
+| `docs/*.md` | `PRD-GAP-LOG.md` row 9, `FLOW.md`, `STATUS.md`, `SIMULATOR.md`, `TEST-DATA.md`, README kiosk table. |
 
 ## Tests
 
@@ -162,6 +164,6 @@ Full suite: 334 passed, 0 failed.
 - Rebuild the API (`docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build api` locally). The
   migration applies at start.
 - No new settings or environment variables.
-- Clients that use it: the web app (`CardEnrollmentButton` on the user detail) and the kiosk firmware
-  (`tams-kiosk-esp32`, card enrollment mode). Older kiosk firmware keeps working; it just never enters card
+- Clients that use it: the web app (`CardEnrollmentButton` on the user detail), the kiosk firmware
+  (`tams-kiosk-esp32`, card enrollment mode) and the simulator at `/sim`. Older kiosk firmware keeps working; it just never enters card
   enrollment mode.

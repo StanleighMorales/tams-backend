@@ -208,6 +208,15 @@ video,canvas.cam{width:100%;max-width:240px;background:#000;border-radius:8px;di
     <button id="tapTag" class="primary">Tap tag on kiosk (ASSET)</button>
   </div>
   <div class="row"><button id="startReturn">Start RETURN (no card)</button></div>
+  <div class="row">
+    <label>Add card for<select id="addCardFor">
+      <option value="instructor@tams.test">Instructor Ina</option>
+      <option value="instructor2@tams.test">Instructor Ian</option>
+      <option value="instructor3@tams.test" selected>Instructor Iris</option></select></label>
+    <button id="addCard">Add card (staff starts it, needs staff login)</button>
+    <button id="tapNewCard">Tap a new card</button>
+  </div>
+  <div class="hint">Staff presses Add card on an instructor; the idle kiosk switches to card enrollment mode ("Add card for ..."); the next card tapped is registered to that instructor. "Tap a new card" sends a random UID; "Tap card" with a UID already in use shows "Card already in use" and the request keeps waiting.</div>
   <details class="more"><summary>Custom UIDs</summary>
     <div class="row">
       <label>Card UID<input id="cardUid" size="12" value="04A1B2C3" autocomplete="off"></label>
@@ -484,7 +493,7 @@ function stepsFor(v) {
   coachFor(v);
 }
 
-const K = { view: null, session: null, photoBusy: false, last: "" };
+const K = { view: null, session: null, photoBusy: false, last: "", cardEnroll: null };
 function lcdSet(lines, off) {
   const l = [...lines, "", "", "", ""].slice(0, 4).map(s => (s || "").slice(0, 20));
   $("lcd").textContent = l.join("\n"); $("lcd").classList.toggle("off", !!off);
@@ -546,6 +555,13 @@ async function autoPhoto() {
     if (r.ok) render(r.data);
   } finally { photoRunning = false; }
 }
+// idle poll answer: an open session, a waiting "Add card" request (card enrollment mode), or the idle text
+function idleView(d) {
+  const ce = d.cardEnrollment || null;
+  if ((ce ? ce.id : null) !== (K.cardEnroll ? K.cardEnroll.id : null)) K.idleShown = false;   // entered or left card enrollment mode
+  K.cardEnroll = ce;
+  if (d.session) render(d.session); else if (!K.view || K.view.finished) { if (!K.idleShown) lcdSet(d.lcdLines); K.idleShown = true; }
+}
 // polling: GET session while open; GET /kiosk/{code}/session when idle (picks up a staff-started enrollment)
 async function pollLoop() {
   let wait = 2000;
@@ -555,13 +571,13 @@ async function pollLoop() {
       if (r.ok) { render(r.data); wait = (r.data.pollIntervalSeconds || 2) * 1000; }
     } else {
       const r = await kiosk("GET", `/kiosk/${stationCode()}/session`, { poll: true });
-      if (r.ok) { wait = (r.data.pollIntervalSeconds || 2) * 1000; if (r.data.session) render(r.data.session); else if (!K.view || K.view.finished) { if (!K.idleShown) lcdSet(r.data.lcdLines); K.idleShown = true; } }
+      if (r.ok) { wait = (r.data.pollIntervalSeconds || 2) * 1000; idleView(r.data); }
     }
   } else offlineLcd();
   setTimeout(pollLoop, wait);
 }
 
-$("tapCard").onclick = () => { K.idleShown = false; kStart(null, cfg.cardUid); };
+$("tapCard").onclick = () => { if (K.cardEnroll) return kCardEnrollTap(cfg.cardUid); K.idleShown = false; kStart(null, cfg.cardUid); };
 $("startReturn").onclick = () => { K.idleShown = false; kStart("RETURN"); };
 $("tapTag").onclick = () => kTag(cfg.tagUid);
 $("finger").onclick = () => kFinger();
@@ -781,6 +797,28 @@ async function startEnrollment(studentNo, finger) {
   return K.view;
 }
 $("enroll").onclick = () => startEnrollment(cfg.studentNo, +cfg.fingerIdx);
+// "Add card": staff start a request, the idle kiosk polls it up (K.cardEnroll), the next card tap registers it
+const newCardUid = () => [...crypto.getRandomValues(new Uint8Array(4))].map(b => b.toString(16).padStart(2, "0")).join("").toUpperCase();
+async function startAddCard(email) {
+  if (!actors.staff.token && !await staffLogin()) { logNote("Add card needs a staff login"); return null; }
+  const u = await api("GET", `/users?q=${encodeURIComponent(email)}`, { actor: "staff" });
+  const user = u.ok && u.data.items.find(x => x.email === email); if (!user) { logNote("User not found: " + email); return null; }
+  const r = await api("POST", "/auth-cards/enrollment", { actor: "staff", body: { userId: user.id } });
+  if (!r.ok) return null;
+  K.idleShown = false;
+  for (let i = 0; i < 12 && !K.cardEnroll; i++) { const p = await kiosk("GET", `/kiosk/${stationCode()}/session`, { poll: true }); if (p.ok) idleView(p.data); if (!K.cardEnroll) await sleep(500); }
+  return K.cardEnroll ? { request: r.data, user } : null;
+}
+async function kCardEnrollTap(uid) {
+  if (!K.cardEnroll) { logNote("Not in card enrollment mode: press Add card first"); return null; }
+  const r = await kiosk("POST", `/kiosk/${stationCode()}/card-enrollment/${K.cardEnroll.id}/tap`, { body: { cardUid: uid } });
+  if (r.ok) { lcdSet(r.data.lcdLines); (r.data.status === "COMPLETED" ? SOUNDS.OK : SOUNDS.DENY)(); if (r.data.status === "COMPLETED") K.cardEnroll = null; }
+  else if (r.status === 409) K.cardEnroll = null;
+  K.idleShown = false;   // the next poll repaints the prompt (still waiting) or the idle text
+  return r;
+}
+$("addCard").onclick = () => startAddCard($("addCardFor").value);
+$("tapNewCard").onclick = () => kCardEnrollTap(newCardUid());
 async function ensureEnrolled(studentNo, finger) {
   if (!actors.staff.token && !await staffLogin()) { logNote("No staff login: assuming " + studentNo + " is enrolled"); return; }
   const st = await studentByNo(studentNo); if (!st) return;
@@ -859,6 +897,18 @@ const SCEN = [
       return { ...cur(), stored };
     } finally { [cfg.studentNo, cfg.fingerIdx] = prev; }
   }, r => r.status === "COMPLETED" && r.stored],
+  ["Add card at the kiosk (Iris)", async () => {
+    if (!actors.staff.token && !await staffLogin()) return { status: "NO_STAFF_LOGIN" };
+    if (K.session) await kCancel();
+    const a = await startAddCard("instructor3@tams.test"); if (!a) return { status: "NO_REQUEST" };
+    const taken = await kCardEnrollTap("04A1B2C3");   // Ina's card: refused, the request keeps waiting
+    const uid = newCardUid();
+    const done = await kCardEnrollTap(uid);
+    const u = await api("GET", `/users/${a.user.id}`, { actor: "staff" });
+    const card = u.ok && u.data.authCards.find(c => c.cardUid === uid);
+    if (card) await api("POST", `/auth-cards/${card.id}/revoke`, { actor: "staff", body: {} });   // leave Iris with her seeded card only
+    return { status: done && done.data && done.data.status, failureCode: taken && taken.data && taken.data.failureCode, stored: !!card };
+  }, r => r.status === "COMPLETED" && r.failureCode === "TAG_ALREADY_ASSIGNED" && r.stored],
   ["Event batch checkout + bulk return (coordinator)", async () => {
     if (!actors.staff.token && !await staffLogin()) return { status: "NO_STAFF_LOGIN" };
     if (!actors.phone.token) await phoneLogin();

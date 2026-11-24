@@ -118,6 +118,7 @@ Only technical staff clear warnings and marks, lift holds and freezes, and settl
 
 - **DAMAGED items are refused** at the kiosk in both flows (built, E6). The PRD wording still has to say so.
 - **Several items per checkout** is a staff setting, default 1 (built, E8). With 1 the flow is exactly as written above.
+- **Adding an instructor's card** is done at the counter kiosk (built, see `docs/CARD-ENROLLMENT.md`): staff press Add card on the instructor in the web app, the idle kiosk switches to card enrollment mode and registers the next card tapped. A revoked or lost card's UID can be issued again (a new row; the old one stays as history). The PRD does not describe this yet.
 - **Event batch borrowing (F5)** is a separate flow (instructor or flagged staff as coordinator, no fingerprint, no photo, no approval). See `docs/PRD-GAP-LOG.md`.
 - **Holds** stay until staff lift them, even after a return (FR-6.5 wording to change; the web violations screen must list returned-but-held students).
 - **Fingerprint** matching is SourceAFIS on a raw sensor image (built, G1). The threshold is provisional until real AS608 captures exist.
