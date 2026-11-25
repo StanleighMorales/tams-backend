@@ -22,7 +22,7 @@ public sealed record SubmitFingerprintRequest(string? Template, string? SensorMo
 
 public static class EnrollmentEndpoints
 {
-    static readonly string[] SensorModels = ["AS608", "R307"];
+    static readonly string[] SensorModels = ["AS608", "R307", "ZK9500"];
     const int MaxTemplateBytes = 4096;
 
     public static IEndpointRouteBuilder MapEnrollmentEndpoints(this IEndpointRouteBuilder app)

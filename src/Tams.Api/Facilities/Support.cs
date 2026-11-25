@@ -18,6 +18,7 @@ public static class FacilityEndpoints
         app.MapRoomEndpoints();
         app.MapStationEndpoints();
         app.MapAuthCardEndpoints();
+        app.MapCardEnrollmentEndpoints();
         return app;
     }
 }
@@ -73,14 +74,17 @@ static class Support
 
     static readonly JsonSerializerOptions Json = new() { Converters = { new JsonStringEnumConverter() } };
 
-    /// <summary>Adds an audit_log row to the current unit of work; the caller's SaveChanges commits it.</summary>
+    public static Guid? ActorId(HttpContext http) =>
+        Guid.TryParse(http.User.FindFirstValue(ClaimTypes.NameIdentifier), out var id) ? id : null;
+
+    /// <summary>Adds an audit_log row to the current unit of work; the caller's SaveChanges commits it.
+    /// <paramref name="actor"/> overrides the signed-in user (the kiosk acts for the staff member who started the request).</summary>
     public static void Audit(TamsDbContext db, HttpContext http, string action, string entityType, Guid entityId,
-        object? before, object? after)
+        object? before, object? after, Guid? actor = null)
     {
-        var actor = Guid.TryParse(http.User.FindFirstValue(ClaimTypes.NameIdentifier), out var id) ? id : (Guid?)null;
         db.AuditLog.Add(new AuditLogEntry
         {
-            ActorUserId = actor,
+            ActorUserId = actor ?? ActorId(http),
             Action = action,
             EntityType = entityType,
             EntityId = entityId,

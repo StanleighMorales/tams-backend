@@ -661,7 +661,8 @@ namespace Tams.Api.Data.Migrations
 
                     b.HasIndex("CardUid")
                         .IsUnique()
-                        .HasDatabaseName("ix_auth_cards_card_uid_uq");
+                        .HasDatabaseName("ix_auth_cards_card_uid_uq")
+                        .HasFilter("status = 'ACTIVE'");
 
                     b.HasIndex("UserId")
                         .HasDatabaseName("ix_auth_cards_user_id");

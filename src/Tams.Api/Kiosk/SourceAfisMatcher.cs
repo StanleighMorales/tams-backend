@@ -15,7 +15,7 @@ public static class SourceAfisMatcher
     public const string Format = "SOURCEAFIS_V1";
     public const double DefaultThreshold = 40;
     public const int MaxImageBytes = 512 * 1024;
-    const double SensorDpi = 500; // AS608 optical sensor, 256x288 px
+    const double SensorDpi = 500; // AS608 (256x288 px) and ZK9500 are both 500 dpi optical; ponytail: make it config if a sensor with another dpi is added
 
     /// <summary>
     /// Builds a template from a raw 8-bit grayscale image, one byte per pixel, row by row (what the AS608 sends).

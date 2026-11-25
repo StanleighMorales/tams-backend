@@ -93,7 +93,8 @@ public class TamsDbContext(DbContextOptions<TamsDbContext> options) : DbContext(
         b.Entity<RefreshToken>().HasIndex(x => x.TokenHash).IsUnique();
         b.Entity<RefreshToken>().HasIndex(x => x.UserId);
         b.Entity<DeviceToken>().HasIndex(x => x.Token).IsUnique();
-        b.Entity<AuthCard>().HasIndex(x => x.CardUid).IsUnique();
+        // Unique among active cards only: revoked and lost rows stay as history, so their UID can be issued again.
+        b.Entity<AuthCard>().HasIndex(x => x.CardUid).IsUnique().HasFilter("status = 'ACTIVE'");
         b.Entity<Section>().HasIndex(x => new { x.Code, x.SchoolYear }).IsUnique();
         b.Entity<Student>().HasIndex(x => x.StudentNo).IsUnique().HasFilter(Live);
         b.Entity<FingerprintTemplate>().HasIndex(x => new { x.StudentId, x.FingerIndex }).IsUnique();

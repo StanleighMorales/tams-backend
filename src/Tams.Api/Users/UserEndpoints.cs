@@ -73,15 +73,23 @@ public static partial class UserEndpoints
         var total = await query.CountAsync(ct);
         var rows = await query.OrderBy(u => u.LastName).ThenBy(u => u.FirstName).ThenBy(u => u.Id)
             .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
-        return Results.Ok(new UserPage(rows.Select(UserDto.From).ToList(), page, pageSize, total));
+        var ids = rows.Select(u => u.Id).ToList();
+        var cards = (await db.AuthCards.AsNoTracking().Where(c => ids.Contains(c.UserId)).ToListAsync(ct))
+            .OrderByDescending(c => c.IssuedAt).ToLookup(c => c.UserId);
+        return Results.Ok(new UserPage(rows.Select(u => UserDto.From(u, CardsOf(cards[u.Id]))).ToList(), page, pageSize, total));
     }
 
     static async Task<IResult> Get(Guid id, TamsDbContext db, CancellationToken ct, bool includeDeleted = false)
     {
         var u = await db.Users.AsNoTracking().FirstOrDefaultAsync(
             x => x.Id == id && (includeDeleted || x.DeletedAt == null), ct);
-        return u is null ? NotFound() : Results.Ok(UserDto.From(u));
+        if (u is null) return NotFound();
+        var cards = await db.AuthCards.AsNoTracking().Where(c => c.UserId == id).ToListAsync(ct);
+        return Results.Ok(UserDto.From(u, CardsOf(cards.OrderByDescending(c => c.IssuedAt))));
     }
+
+    // Newest first, every status: staff see revoked and lost cards as history next to the active one.
+    static List<UserCardDto> CardsOf(IEnumerable<AuthCard> cards) => cards.Select(UserCardDto.From).ToList();
 
     static async Task<IResult> Create(CreateUserRequest req, TamsDbContext db, HttpContext http, CancellationToken ct)
     {

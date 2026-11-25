@@ -6,6 +6,7 @@ using Tams.Api.Common;
 using Tams.Api.Data;
 using Tams.Api.Data.Entities;
 using Tams.Api.Http;
+using Tams.Api.Users;
 
 namespace Tams.Api.Auth;
 
@@ -22,6 +23,7 @@ public static class AuthEndpoints
         var g = app.MapGroup("/auth").WithTags("Auth");
         g.MapPost("/login", Login).AllowAnonymous();
         g.MapPost("/refresh", Refresh).AllowAnonymous();
+        g.MapGet("/me", Me).RequireAuthorization();
         g.MapPost("/logout", Logout).RequireAuthorization();
         g.MapPost("/change-password", ChangePassword).RequireAuthorization();
         return app;
@@ -130,6 +132,16 @@ public static class AuthEndpoints
         Audit(db, http, userId, userId, "REFRESH_TOKEN_REUSED", null);
         await db.SaveChangesAsync(ct);
         return Problems.Unauthorized("REFRESH_TOKEN_REUSED", "The refresh token was already used. All sessions were signed out; log in again.");
+    }
+
+    // Identity comes from the token's sub, never from a client-supplied id. CurrentUser re-checks the database,
+    // so a deactivated or deleted account is refused even while its access token is still unexpired.
+    static async Task<IResult> Me(HttpContext http, TamsDbContext db, CancellationToken ct)
+    {
+        var user = await CurrentUser(http, db, ct);
+        if (user is null) return Problems.Unauthorized("UNAUTHORIZED", "Authentication is required.");
+        http.Response.Headers.CacheControl = "no-store";
+        return Results.Ok(UserDto.From(user)); // no password hash or security stamp in the DTO
     }
 
     // Body is optional. With a refresh token: revoke just that one (the user's own). Without: revoke them all.

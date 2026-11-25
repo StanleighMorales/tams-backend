@@ -66,6 +66,13 @@ login it enrolls the student first.
    (green LED = `SUCCESS`), and the loan becomes verified in the room.
 5. Return: "Start RETURN", "Place finger", "Tap tag on kiosk". No confirm; the loan closes on the tag tap.
 
+**Add card (card enrollment mode).** In the card reader panel pick an instructor and press "Add card" (needs the staff login). The kiosk's
+idle poll picks the request up (`cardEnrollment` in `GET /kiosk/{code}/session`) and the LCD reads "Add card for / <name> / Tap the new card".
+"Tap a new card" sends a random UID and the LCD reads "Card registered"; "Tap card" with a UID already in use (Ina's `04A1B2C3`) reads
+"Card already in use" and the request keeps waiting, so the next tap can be a different card. The request expires after 90 s. The new
+card shows up under the instructor in `GET /users/{id}` (`authCards`). Real firmware does the same: poll idle, and while `cardEnrollment`
+is set send the next card to its tap route instead of starting a session.
+
 A tap on a DAMAGED asset is refused (TAMS-119): checkout ends `FAILED` with `ASSET_DAMAGED` and the LCD reads "Item damaged / See lab staff";
 in event batch the same text shows and the batch carries on. Every kiosk response after a tag tap has an `item` object (`assetCode`,
 `name`, `condition`), and the LCD's second line is "name - CONDITION". The simulator draws `lcdLines` as sent, so no panel change is
@@ -88,7 +95,7 @@ Wi-Fi off stops polling and heartbeats; the staff panel shows the station going 
 | Panel | Simulates | Backend | Tickets |
 |---|---|---|---|
 | Network and heartbeat | ESP32 Wi-Fi and heartbeat task (interval and jitter) | `POST /stations/{code}/heartbeat`, `GET /stations/health` | TAMS-50 (Wi-Fi and HTTP client), TAMS-80 (room station heartbeat) |
-| PN532 reader | card and tag reads | `POST /kiosk/{code}/sessions`, `.../asset` | TAMS-51 (PN532 firmware) |
+| PN532 reader | card and tag reads; "Add card" (card enrollment mode) | `POST /kiosk/{code}/sessions`, `.../asset`, `POST /auth-cards/enrollment`, `POST /kiosk/{code}/card-enrollment/{id}/tap` | TAMS-51 (PN532 firmware) |
 | AS608 fingerprint | sensor image (or legacy template), noise knob, wrong finger, enrollment | `.../fingerprint`, `POST /enrollment/sessions` | TAMS-52 (capture and upload), TAMS-53 (enrollment mode) |
 | Counter kiosk (LCD2004, buttons, buzzer, webcam) | 4x20 LCD from `lcdLines`, OK/X, tones per step, camera with retry and fault | `.../photo`, `.../confirm`, `.../cancel`, session polling | TAMS-76 (LCD), TAMS-77 (buttons, buzzer), TAMS-78 (checkout flow, 2 s polling) |
 | Room reader | room tag tap, LED and tone from `signal`; sends the key from the "Room reader X-Station-Key" field | `POST /stations/{code}/scans` | TAMS-80 (room station build), TAMS-111 |
@@ -102,10 +109,13 @@ The ticket column is the Jira ticket whose firmware or client the panel stands i
 
 Happy-path checkout with room check-in, RETURN, unknown card, unknown fingerprint (3 tries), unknown tag, camera error,
 instructor declines, approval timeout (sets `approval_timeout_seconds` to 30 as admin, then restores it, and waits), loan limit,
-item not on loan, wrong-room scan, plus three added for the firmware work:
+item not on loan, wrong-room scan, plus four added for the firmware work:
 
 - **Enrollment on the kiosk:** staff starts an enrollment for 2024-0004 finger 8, the kiosk polls it up, one scan and OK, then the
   scenario checks the finger is stored and removes it again.
+- **Add card at the kiosk (Iris):** staff starts Add card for Iris, the kiosk polls it up, a tap of Ina's card is refused
+  (`TAG_ALREADY_ASSIGNED`, still waiting), a random new UID completes it, the scenario checks Iris lists the card, then revokes it
+  again so she is left with her seeded card.
 - **Event batch checkout + bulk return:** admin creates an event running now for the demo coordinator (Ina), her card opens
   `EVENT_BATCH`, two tags are borrowed, OK; then `EVENT_RETURN` returns both. The event is closed afterwards.
 - **Wi-Fi drop** (waits about a minute): sends a heartbeat, turns Wi-Fi off, waits for `GET /stations/health` to say Offline, turns

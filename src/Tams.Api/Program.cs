@@ -47,6 +47,7 @@ var connectionString = builder.Configuration.GetConnectionString("Default")
 
 builder.Services.AddDbContext<TamsDbContext>(o => o.UseNpgsql(connectionString, PgEnums.MapAll));
 builder.Services.AddTamsSettings();
+builder.Services.AddSingleton<CardEnrollmentDesk>(); // in-memory "Add card" requests: one API instance
 builder.Services.AddHostedService<EnrollmentSweeper>();
 builder.Services.AddHostedService<LoanSweeper>();
 builder.Services.AddHostedService<Tams.Api.Retention.RetentionSweeper>();

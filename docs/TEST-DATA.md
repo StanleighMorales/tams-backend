@@ -89,6 +89,11 @@ UIDs are hex, 8 to 20 characters, even count; `:`, `-` and spaces are ignored an
 | `PUT /auth-cards/{id}` | `{"status":"ACTIVE"}` | 200 (statuses `ACTIVE`, `LOST`, `REVOKED`) |
 | `POST /auth-cards/{id}/replace` | `{"newCardUid":"04D1E2F3","oldStatus":"LOST"}` | 200 `{oldCard,newCard}` |
 | `POST /auth-cards/{id}/revoke` | `{"status":"REVOKED"}` | 200 |
+| `POST /auth-cards` | a UID whose only other row is REVOKED or LOST | 201 (a new row; the old one stays as history) |
+| `PUT /auth-cards/{id}` | `{"status":"ACTIVE"}` on an old row whose UID is active elsewhere | 409 `TAG_ALREADY_ASSIGNED` |
+| `POST /auth-cards/enrollment` | `{"userId":"<instructor id>"}` | 201 `CardEnrollment` (`WAITING`; ADMIN, TECH_STAFF) |
+| `POST /kiosk/{code}/card-enrollment/{id}/tap` | `{"cardUid":"04D1E2F3"}` with `X-Station-Code` | 200 `COMPLETED`; a UID already in use answers 200 `WAITING` with `failureCode` `TAG_ALREADY_ASSIGNED` |
+| `GET /users/{id}` | | 200 with `authCards` (all statuses, newest first) |
 
 ## 6. Asset categories (read: ADMIN/TECH_STAFF/CUSTODIAN; write: ADMIN/TECH_STAFF)
 
