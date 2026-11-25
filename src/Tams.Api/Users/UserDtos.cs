@@ -6,12 +6,14 @@ namespace Tams.Api.Users;
 public record UserDto(
     Guid Id, string Email, string EmployeeNo, string FirstName, string LastName,
     string Role, bool IsEventCoordinator, Guid? DefaultRoomId, string Status,
-    DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, DateTimeOffset? DeletedAt)
+    DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, DateTimeOffset? DeletedAt,
+    IReadOnlyList<UserCardDto>? AuthCards = null)
 {
-    public static UserDto From(User u) => new(
+    /// <param name="cards">Only the list and detail reads load the user's cards; write responses leave them null.</param>
+    public static UserDto From(User u, IReadOnlyList<UserCardDto>? cards = null) => new(
         u.Id, u.Email ?? "", u.EmployeeNo, u.FirstName, u.LastName, RoleLabel(u.Role),
         u.IsEventCoordinator, u.DefaultRoomId, StatusLabel(u.Status),
-        u.CreatedAt, u.UpdatedAt, u.DeletedAt);
+        u.CreatedAt, u.UpdatedAt, u.DeletedAt, cards);
 
     // Same UPPER_SNAKE labels as the user_role / record_status PostgreSQL enums.
     public static string RoleLabel(UserRole r) => r switch
@@ -23,6 +25,14 @@ public record UserDto(
     };
 
     public static string StatusLabel(RecordStatus s) => s == RecordStatus.Active ? "ACTIVE" : "INACTIVE";
+}
+
+/// <summary>Same shape as the /auth-cards items.</summary>
+public record UserCardDto(Guid Id, string CardUid, Guid UserId, string Status, DateTimeOffset IssuedAt)
+{
+    public static UserCardDto From(AuthCard c) => new(c.Id, c.CardUid, c.UserId, StatusOf(c.Status), c.IssuedAt);
+
+    static string StatusOf(CardStatus s) => s switch { CardStatus.Active => "ACTIVE", CardStatus.Lost => "LOST", _ => "REVOKED" };
 }
 
 public record UserPage(IReadOnlyList<UserDto> Items, int Page, int PageSize, int Total);

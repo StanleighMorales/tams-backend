@@ -130,6 +130,7 @@ Proposed LCD text (20 characters per line, 4 lines; hardware to confirm it fits)
 | 6 | Staff mobile push for anomalies, transit timeouts, stations offline | FR-4.3, FR-8.3 | built (E4); PRD wording to change |
 | 7 | Fingerprint images: server-side SourceAFIS on the sensor image, image never stored; reword the letter, FR-1.3, NFR-11 and §6.2 | biometric request s5, FR-1.3, NFR-11 | built, option A (G1); threshold needs real captures; PRD and letter wording to change |
 | 8 | Several items per student checkout, configurable (gap S1) | F1, FR-1.1, FR-1.5, FR-1.9 | built (E8); PRD wording to change |
+| 9 | "Add card" at the kiosk: staff register an instructor card by tapping it on the counter kiosk; revoked UIDs can be issued again; users list their cards | F1 step 1, §6.2, §7.3 | built, see docs/CARD-ENROLLMENT.md (simulator has Add card and a scenario); PRD wording to change; kiosk firmware must add card enrollment mode |
 
 ## New tasks from this log
 

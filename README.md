@@ -131,7 +131,8 @@ its venue can be voided (`LOAN_NOT_VOIDABLE` otherwise). A voided loan stays as 
 
 | Step | Call |
 |---|---|
-| Idle poll (picks up a staff-started enrollment) | `GET /api/kiosk/{code}/session` |
+| Idle poll (picks up a staff-started enrollment, or an "Add card" request in `cardEnrollment`) | `GET /api/kiosk/{code}/session` |
+| Card enrollment mode: the next card tapped while `cardEnrollment` is set | `POST /api/kiosk/{code}/card-enrollment/{id}/tap` `{"cardUid":"A1B2C3D4"}` |
 | Card tap (or `{"type":"RETURN"}` to return an item) | `POST /api/kiosk/{code}/sessions` `{"cardUid":"A1B2C3D4"}` |
 | Fingerprint (base64 raw sensor image, 8-bit gray, `width` x `height` bytes) | `POST /api/kiosk/sessions/{id}/fingerprint` `{"image":"...","width":256,"height":288,"sensorModel":"AS608"}` |
 | Item tag | `POST /api/kiosk/sessions/{id}/asset` `{"tagUid":"04A1B2C3"}` |

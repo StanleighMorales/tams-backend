@@ -58,7 +58,7 @@ public static class KioskEndpoints
 
     /// <summary>The open session on this kiosk, if any. The idle kiosk (or the counter computer's camera
     /// screen) polls this to pick up a staff-started enrollment.</summary>
-    static async Task<IResult> Current(string stationCode, HttpContext http, TamsDbContext db, ISettings settings, CancellationToken ct)
+    static async Task<IResult> Current(string stationCode, HttpContext http, TamsDbContext db, ISettings settings, CardEnrollmentDesk cardDesk, CancellationToken ct)
     {
         var station = await StationAsync(db, stationCode, ct);
         if (station is null || !StationAuth.IsStationAuthenticated(http, station)) return NotAuthenticated();
@@ -67,10 +67,13 @@ public static class KioskEndpoints
         var s = await db.CheckoutSessions.AsNoTracking().Where(IsOpenExpr)
             .Where(x => x.StationId == station.Id && x.ExpiresAt > now)
             .OrderByDescending(x => x.CreatedAt).FirstOrDefaultAsync(ct);
+        // An open session always comes first; otherwise a waiting "Add card" request switches the kiosk to card enrollment mode.
+        var cardEnrollment = s is null ? cardDesk.Waiting() : null;
         return Results.Ok(new
         {
             session = s is null ? null : View(s, now, poll, await ItemAsync(db, s, ct), await ItemsAsync(db, s, ct)),
-            lcdLines = s is null ? IdleLines : LcdJson.Read(s),
+            cardEnrollment,
+            lcdLines = s is not null ? LcdJson.Read(s) : cardEnrollment is not null ? CardEnrollmentEndpoints.PromptLines(cardEnrollment) : IdleLines,
             pollIntervalSeconds = poll,
         });
     }
@@ -123,7 +126,9 @@ public static class KioskEndpoints
         }
         else
         {
-            var card = await db.AuthCards.AsNoTracking().FirstOrDefaultAsync(c => c.CardUid == uid, ct);
+            // A revoked UID can be issued again, so one UID may have several rows: the active one wins, else the newest.
+            var card = await db.AuthCards.AsNoTracking().Where(c => c.CardUid == uid)
+                .OrderBy(c => c.Status == CardStatus.Active ? 0 : 1).ThenByDescending(c => c.IssuedAt).FirstOrDefaultAsync(ct);
             var user = card is null ? null : await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == card.UserId, ct);
             session.AuthCardId = card?.Id;
             session.InstructorUserId = user?.Id;
