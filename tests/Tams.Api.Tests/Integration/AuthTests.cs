@@ -92,6 +92,19 @@ public class AuthTests(ApiFixture api)
     }
 
     [Fact]
+    public async Task Me_returns_the_caller_only_and_requires_a_token()
+    {
+        var admin = await api.As("ADMIN");
+        var u = await Seed.User(admin);
+        var me = api.WithToken((await LoginAsync(api.NoAuth(), u.Email, u.Password)).Access);
+
+        var body = await me.GetAsync("/api/auth/me").Ok();
+        Assert.Contains(u.Email, body.ToString(), StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("passwordHash", body.ToString(), StringComparison.OrdinalIgnoreCase);
+        await api.NoAuth().GetAsync("/api/auth/me").Expect(401);
+    }
+
+    [Fact]
     public async Task Change_password_switches_the_login_password()
     {
         var admin = await api.As("ADMIN");
