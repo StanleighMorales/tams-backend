@@ -217,6 +217,12 @@ video,canvas.cam{width:100%;max-width:240px;background:#000;border-radius:8px;di
     <button id="tapNewCard">Tap a new card</button>
   </div>
   <div class="hint">Staff presses Add card on an instructor; the idle kiosk switches to card enrollment mode ("Add card for ..."); the next card tapped is registered to that instructor. "Tap a new card" sends a random UID; "Tap card" with a UID already in use shows "Card already in use" and the request keeps waiting.</div>
+  <div class="row">
+    <label>Scan tag label<input id="scanTagLabel" size="12" value="LP-NEW" autocomplete="off"></label>
+    <button id="scanTag">Scan tag (staff starts it, needs staff login)</button>
+    <button id="tapNewTag">Tap a new item tag</button>
+  </div>
+  <div class="hint">Scan tag: staff press it on the asset form; the idle kiosk shows "Scan item tag" and the next tag tapped is read back, nothing is saved. "Tap a new item tag" sends a random UID; a UID already used by a card or another asset shows "Tag already in use" and the request keeps waiting.</div>
   <details class="more"><summary>Custom UIDs</summary>
     <div class="row">
       <label>Card UID<input id="cardUid" size="12" value="04A1B2C3" autocomplete="off"></label>
@@ -819,6 +825,17 @@ async function kCardEnrollTap(uid) {
 }
 $("addCard").onclick = () => startAddCard($("addCardFor").value);
 $("tapNewCard").onclick = () => kCardEnrollTap(newCardUid());
+// "Scan tag": same idle poll and same tap route as Add card; the request is an ASSET_TAG and the answer carries tagUid
+async function startScanTag(label) {
+  if (!actors.staff.token && !await staffLogin()) { logNote("Scan tag needs a staff login"); return null; }
+  const r = await api("POST", "/assets/tag-scan", { actor: "staff", body: { label } });
+  if (!r.ok) return null;
+  K.idleShown = false;
+  for (let i = 0; i < 12 && !K.cardEnroll; i++) { const p = await kiosk("GET", `/kiosk/${stationCode()}/session`, { poll: true }); if (p.ok) idleView(p.data); if (!K.cardEnroll) await sleep(500); }
+  return K.cardEnroll ? { request: r.data } : null;
+}
+$("scanTag").onclick = () => startScanTag($("scanTagLabel").value);
+$("tapNewTag").onclick = () => kCardEnrollTap(newCardUid());
 async function ensureEnrolled(studentNo, finger) {
   if (!actors.staff.token && !await staffLogin()) { logNote("No staff login: assuming " + studentNo + " is enrolled"); return; }
   const st = await studentByNo(studentNo); if (!st) return;
@@ -909,6 +926,18 @@ const SCEN = [
     if (card) await api("POST", `/auth-cards/${card.id}/revoke`, { actor: "staff", body: {} });   // leave Iris with her seeded card only
     return { status: done && done.data && done.data.status, failureCode: taken && taken.data && taken.data.failureCode, stored: !!card };
   }, r => r.status === "COMPLETED" && r.failureCode === "TAG_ALREADY_ASSIGNED" && r.stored],
+  ["Scan tag at the kiosk", async () => {
+    if (!actors.staff.token && !await staffLogin()) return { status: "NO_STAFF_LOGIN" };
+    if (K.session) await kCancel();
+    const a = await startScanTag("LP-NEW"); if (!a) return { status: "NO_REQUEST" };
+    const kind = K.cardEnroll.kind;
+    const taken = await kCardEnrollTap("04A1B2C3D4E5F6");   // LT-002's tag: refused, the request keeps waiting
+    const uid = newCardUid();
+    const done = await kCardEnrollTap(uid);
+    const scan = await api("GET", `/assets/tag-scan/${a.request.id}`, { actor: "staff" });
+    return { status: done && done.data && done.data.status, failureCode: taken && taken.data && taken.data.failureCode, kind,
+      read: !!done && done.data.tagUid === uid && scan.ok && scan.data.tagUid === uid };
+  }, r => r.status === "COMPLETED" && r.kind === "ASSET_TAG" && r.failureCode === "TAG_ALREADY_ASSIGNED" && r.read],
   ["Event batch checkout + bulk return (coordinator)", async () => {
     if (!actors.staff.token && !await staffLogin()) return { status: "NO_STAFF_LOGIN" };
     if (!actors.phone.token) await phoneLogin();

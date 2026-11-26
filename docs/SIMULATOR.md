@@ -66,6 +66,9 @@ login it enrolls the student first.
    (green LED = `SUCCESS`), and the loan becomes verified in the room.
 5. Return: "Start RETURN", "Place finger", "Tap tag on kiosk". No confirm; the loan closes on the tag tap.
 
+**Scan tag.** The same panel has "Scan tag" (staff login) and "Tap a new item tag". The LCD reads "Scan item tag / <label> / Tap the item tag",
+then "Tag read / <UID>" on a good tap, or "Tag already in use" (still waiting) for a UID held by a card or another asset. See `docs/ASSET-TAG-SCAN.md`.
+
 **Add card (card enrollment mode).** In the card reader panel pick an instructor and press "Add card" (needs the staff login). The kiosk's
 idle poll picks the request up (`cardEnrollment` in `GET /kiosk/{code}/session`) and the LCD reads "Add card for / <name> / Tap the new card".
 "Tap a new card" sends a random UID and the LCD reads "Card registered"; "Tap card" with a UID already in use (Ina's `04A1B2C3`) reads
@@ -116,6 +119,9 @@ item not on loan, wrong-room scan, plus four added for the firmware work:
 - **Add card at the kiosk (Iris):** staff starts Add card for Iris, the kiosk polls it up, a tap of Ina's card is refused
   (`TAG_ALREADY_ASSIGNED`, still waiting), a random new UID completes it, the scenario checks Iris lists the card, then revokes it
   again so she is left with her seeded card.
+- **Scan tag at the kiosk:** staff starts Scan tag (`POST /assets/tag-scan`), the kiosk polls it up as `kind: "ASSET_TAG"`, a tap of
+  LT-002's tag is refused (`TAG_ALREADY_ASSIGNED`, still waiting), a random new UID completes it, and the scenario checks the answer
+  and `GET /assets/tag-scan/{id}` both carry that `tagUid`. Nothing is saved.
 - **Event batch checkout + bulk return:** admin creates an event running now for the demo coordinator (Ina), her card opens
   `EVENT_BATCH`, two tags are borrowed, OK; then `EVENT_RETURN` returns both. The event is closed afterwards.
 - **Wi-Fi drop** (waits about a minute): sends a heartbeat, turns Wi-Fi off, waits for `GET /stations/health` to say Offline, turns
