@@ -3,6 +3,10 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.SignalR;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
+using Tams.Api.Live;
 using Testcontainers.PostgreSql;
 
 namespace Tams.Api.Tests.Integration;
@@ -26,6 +30,9 @@ public sealed class ApiFixture : IAsyncLifetime
     public Dictionary<string, Guid> UserIds { get; } = [];
     public IServiceProvider Services => _factory.Services;
 
+    /// <summary>Records every SignalR group send. It replaces the real hub in the test API.</summary>
+    public HubRecorder Hub { get; } = new();
+
     public async Task InitializeAsync()
     {
         await _db.StartAsync();
@@ -38,7 +45,8 @@ public sealed class ApiFixture : IAsyncLifetime
             .UseSetting("DataProtection:KeysPath", Path.Combine(_scratch, "keys"))
             .UseSetting("Media:Path", Path.Combine(_scratch, "media"))
             .UseSetting("Seed:Demo", "true")
-            .UseSetting("Docs:Enabled", "true"));
+            .UseSetting("Docs:Enabled", "true")
+            .ConfigureTestServices(services => services.AddSingleton<IHubContext<LiveHub>>(Hub)));
 
         // One user per role; the instructor is also an event coordinator so it is a valid card owner.
         var admin = await As("ADMIN");

@@ -473,8 +473,8 @@ public static class KioskEndpoints
         s.LcdLines = LcdJson.Write($"Borrowed {asset.AssetCode}", NameAndCondition(asset), $"{lent + 1} borrowed", "OK when done");
         await db.SaveChangesAsync(ct);
 
-        outbox.Staff("loan.created", LoanCreated(loan, asset));
-        outbox.Staff("asset.statusChanged", LoanRules.StatusChanged(asset.Id, from, asset.Status, asset.CurrentRoomId));
+        outbox.ForLoan(loan, "loan.created", LoanCreated(loan, asset));
+        outbox.ForLoan(loan, "asset.statusChanged", LoanRules.StatusChanged(asset.Id, from, asset.Status, asset.CurrentRoomId));
         await LoanRules.OccupancyChangedAsync(db, outbox, loan.DestinationRoomId, now, ct);
     }
 
@@ -616,8 +616,8 @@ public static class KioskEndpoints
 
         foreach (var (loan, asset) in loans.Zip(assets))
         {
-            outbox.Staff("loan.created", LoanCreated(loan, asset));
-            outbox.Staff("asset.statusChanged", LoanRules.StatusChanged(asset.Id, AssetStatus.AtCounter, AssetStatus.InTransit, loan.DestinationRoomId));
+            outbox.ForLoan(loan, "loan.created", LoanCreated(loan, asset));
+            outbox.ForLoan(loan, "asset.statusChanged", LoanRules.StatusChanged(asset.Id, AssetStatus.AtCounter, AssetStatus.InTransit, loan.DestinationRoomId));
         }
         await LoanRules.OccupancyChangedAsync(db, outbox, s.DestinationRoomId, now, ct);
     }
