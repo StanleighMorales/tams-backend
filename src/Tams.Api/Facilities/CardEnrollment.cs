@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Tams.Api.Assets;
 using Tams.Api.Auth;
 using Tams.Api.Common;
 using Tams.Api.Data;
@@ -10,41 +11,50 @@ namespace Tams.Api.Facilities;
 record CardEnrollmentStart(Guid? UserId);
 record CardEnrollmentTap(string? CardUid);
 record CardEnrollmentError(string Code, string Detail);
+record TagScanStart(Guid? AssetId, string? Label);
 
 record CardEnrollment(Guid Id, Guid UserId, string UserName, string Email, string Status, DateTimeOffset ExpiresAt,
     CardDto? Card, CardEnrollmentError? LastError);
 
-/// <summary>What a kiosk poll needs to switch to card enrollment mode.</summary>
-record CardEnrollmentPrompt(Guid Id, string UserName, string Email, DateTimeOffset ExpiresAt);
+/// <summary>"Scan tag" request: the kiosk reads an item's tag UID for the asset form. Nothing is saved.</summary>
+record TagScan(Guid Id, Guid? AssetId, string Label, string Status, DateTimeOffset ExpiresAt,
+    string? TagUid, CardEnrollmentError? LastError);
+
+/// <summary>What a kiosk poll needs to switch to enrollment mode. For ASSET_TAG, UserName carries the asset label.</summary>
+record CardEnrollmentPrompt(Guid Id, string Kind, string UserName, string Email, DateTimeOffset ExpiresAt);
 
 /// <summary>
-/// "Add card" requests, held in memory: staff press Add card on an instructor, the idle counter kiosk shows the
-/// request and the next card tapped is registered to that instructor. A request lives 90 s, so losing one to an API
-/// restart only means pressing Add card again. One API instance only; several would need these rows in the database.
+/// "Add card" and "Scan tag" requests, held in memory: staff press the button on the web app, the idle counter kiosk
+/// shows the request and the next tap is used (a card is registered, or a tag UID is read back). A request lives 90 s,
+/// so losing one to an API restart only means pressing the button again. One API instance only; several would need
+/// these rows in the database. One waiting request at a time, across both kinds.
 /// </summary>
 sealed class CardEnrollmentDesk
 {
+    public const string CardKind = "CARD", AssetTag = "ASSET_TAG";
     public static readonly TimeSpan Lifetime = TimeSpan.FromSeconds(90);
     static readonly TimeSpan KeepFinished = TimeSpan.FromMinutes(10);
 
     sealed class Entry
     {
         public Guid Id, UserId;
-        public Guid? StartedBy;
-        public string UserName = "", Email = "", Status = "WAITING";
+        public Guid? StartedBy, AssetId;
+        public string Kind = CardKind, UserName = "", Email = "", Status = "WAITING";
         public DateTimeOffset ExpiresAt;
         public DateTimeOffset? EndedAt;
         public bool Claimed; // a tap is writing the card right now: a second tap must not start another write
         public CardDto? Card;
+        public string? TagUid;
         public CardEnrollmentError? LastError;
     }
 
-    public record Claim(Guid UserId, Guid? StartedBy, string UserName);
+    public record Claim(string Kind, Guid UserId, Guid? AssetId, Guid? StartedBy, string UserName);
 
     readonly object gate = new();
     readonly Dictionary<Guid, Entry> entries = [];
 
     static CardEnrollment View(Entry e) => new(e.Id, e.UserId, e.UserName, e.Email, e.Status, e.ExpiresAt, e.Card, e.LastError);
+    static TagScan TagView(Entry e) => new(e.Id, e.AssetId, e.UserName, e.Status, e.ExpiresAt, e.TagUid, e.LastError);
 
     void Sweep(DateTimeOffset now)
     {
@@ -55,44 +65,64 @@ sealed class CardEnrollmentDesk
         }
     }
 
-    /// <summary>A new request cancels the one still waiting: one at a time.</summary>
+    /// <summary>A new request cancels the one still waiting, of either kind: one at a time. Call inside the lock.</summary>
+    Entry Add(Entry e)
+    {
+        var now = DateTimeOffset.UtcNow;
+        Sweep(now);
+        foreach (var old in entries.Values.Where(x => x.Status == "WAITING" && !x.Claimed))
+        {
+            old.Status = "CANCELLED";
+            old.EndedAt = now;
+        }
+        (e.Id, e.ExpiresAt) = (Guid.NewGuid(), now + Lifetime);
+        entries[e.Id] = e;
+        return e;
+    }
+
     public CardEnrollment Start(Guid userId, string userName, string email, Guid? startedBy)
     {
-        lock (gate)
-        {
-            var now = DateTimeOffset.UtcNow;
-            Sweep(now);
-            foreach (var old in entries.Values.Where(x => x.Status == "WAITING" && !x.Claimed))
-            {
-                old.Status = "CANCELLED";
-                old.EndedAt = now;
-            }
-            var e = new Entry { Id = Guid.NewGuid(), UserId = userId, UserName = userName, Email = email, StartedBy = startedBy, ExpiresAt = now + Lifetime };
-            entries[e.Id] = e;
-            return View(e);
-        }
+        lock (gate) return View(Add(new Entry { UserId = userId, UserName = userName, Email = email, StartedBy = startedBy }));
+    }
+
+    public TagScan StartTagScan(Guid? assetId, string label, Guid? startedBy)
+    {
+        lock (gate) return TagView(Add(new Entry { Kind = AssetTag, AssetId = assetId, UserName = label, StartedBy = startedBy }));
+    }
+
+    // An id of one kind is not visible as the other: Get filters by kind. Call inside the lock.
+    Entry? Get(Guid id, string kind)
+    {
+        Sweep(DateTimeOffset.UtcNow);
+        return entries.TryGetValue(id, out var e) && e.Kind == kind ? e : null;
     }
 
     public CardEnrollment? Find(Guid id)
     {
-        lock (gate)
-        {
-            Sweep(DateTimeOffset.UtcNow);
-            return entries.TryGetValue(id, out var e) ? View(e) : null;
-        }
+        lock (gate) return Get(id, CardKind) is { } e ? View(e) : null;
+    }
+
+    public TagScan? FindTagScan(Guid id)
+    {
+        lock (gate) return Get(id, AssetTag) is { } e ? TagView(e) : null;
     }
 
     /// <summary>Idempotent: a finished request is returned unchanged.</summary>
     public CardEnrollment? Cancel(Guid id)
     {
-        lock (gate)
-        {
-            var now = DateTimeOffset.UtcNow;
-            Sweep(now);
-            if (!entries.TryGetValue(id, out var e)) return null;
-            if (e.Status == "WAITING" && !e.Claimed) { e.Status = "CANCELLED"; e.EndedAt = now; }
-            return View(e);
-        }
+        lock (gate) return CancelEntry(id, CardKind) is { } e ? View(e) : null;
+    }
+
+    public TagScan? CancelTagScan(Guid id)
+    {
+        lock (gate) return CancelEntry(id, AssetTag) is { } e ? TagView(e) : null;
+    }
+
+    Entry? CancelEntry(Guid id, string kind)
+    {
+        var e = Get(id, kind);
+        if (e is { Status: "WAITING", Claimed: false }) { e.Status = "CANCELLED"; e.EndedAt = DateTimeOffset.UtcNow; }
+        return e;
     }
 
     /// <summary>The request an idle kiosk should show, if any.</summary>
@@ -102,7 +132,7 @@ sealed class CardEnrollmentDesk
         {
             Sweep(DateTimeOffset.UtcNow);
             var e = entries.Values.FirstOrDefault(x => x.Status == "WAITING" && !x.Claimed);
-            return e is null ? null : new(e.Id, e.UserName, e.Email, e.ExpiresAt);
+            return e is null ? null : new(e.Id, e.Kind, e.UserName, e.Email, e.ExpiresAt);
         }
     }
 
@@ -115,7 +145,7 @@ sealed class CardEnrollmentDesk
             if (!entries.TryGetValue(id, out var e)) return (false, null);
             if (e.Status != "WAITING" || e.Claimed) return (true, null);
             e.Claimed = true;
-            return (true, new Claim(e.UserId, e.StartedBy, e.UserName));
+            return (true, new Claim(e.Kind, e.UserId, e.AssetId, e.StartedBy, e.UserName));
         }
     }
 
@@ -129,14 +159,25 @@ sealed class CardEnrollmentDesk
         }
     }
 
-    /// <summary>The tap was refused: the request goes on waiting, so the next tap can be a different card.</summary>
-    public CardEnrollment Release(Guid id, CardEnrollmentError error)
+    public TagScan CompleteTagScan(Guid id, string tagUid)
+    {
+        lock (gate)
+        {
+            var e = entries[id];
+            (e.Claimed, e.Status, e.TagUid, e.LastError, e.EndedAt) = (false, "COMPLETED", tagUid, null, DateTimeOffset.UtcNow);
+            return TagView(e);
+        }
+    }
+
+    /// <summary>The tap was refused: the request goes on waiting, so the next tap can be a different card or tag.
+    /// Returns the status, so both kinds can build their answer from it.</summary>
+    public string Release(Guid id, CardEnrollmentError error)
     {
         lock (gate)
         {
             var e = entries[id];
             (e.Claimed, e.LastError) = (false, error);
-            return View(e);
+            return e.Status;
         }
     }
 }
@@ -154,6 +195,12 @@ public static class CardEnrollmentEndpoints
 
         app.MapGroup("/kiosk").WithTags("Kiosk").AllowAnonymous()
             .MapPost("/{stationCode}/card-enrollment/{id:guid}/tap", Tap);
+
+        // "Scan tag" on the asset form: same roles as POST/PUT /assets.
+        var t = app.MapGroup("/assets/tag-scan").WithTags("Assets");
+        t.MapPost("/", StartTagScan).RequireRoles(FacilityRoles.Write);
+        t.MapGet("/{id:guid}", GetTagScan).RequireRoles(FacilityRoles.Write);
+        t.MapPost("/{id:guid}/cancel", CancelTagScan).RequireRoles(FacilityRoles.Write);
         return app;
     }
 
@@ -196,33 +243,73 @@ public static class CardEnrollmentEndpoints
         // Whatever happens below, the claim must not stay held, or the request could never be tapped again.
         try
         {
+            if (claim.Kind == CardEnrollmentDesk.AssetTag)
+            {
+                // Same rule as saving the asset; the asset being edited may keep its own tag.
+                if (await AssetEndpoints.TagProblem(db, uid, claim.AssetId, ct) is not { } taken)
+                {
+                    var read = desk.CompleteTagScan(id, uid);
+                    return Results.Ok(TagAnswer(id, read.Status, null, uid, "Tag read", Fit(uid), "Save it in the", "web app"));
+                }
+                var waiting = desk.Release(id, new CardEnrollmentError(taken.Code, taken.Detail));
+                return Results.Ok(TagAnswer(id, waiting, taken.Code, null, "Tag already in use", "Tap a different", "tag", ""));
+            }
+
             var (card, problem) = await AuthCardEndpoints.IssueAsync(db, http, uid, claim.UserId, claim.StartedBy, ct);
             if (card is not null)
             {
                 var done = desk.Complete(id, CardDto.From(card));
-                return Results.Ok(Answer(done, null, "Card registered", Fit(claim.UserName), uid));
+                return Results.Ok(Answer(id, done.Status, null, done.Card, "Card registered", Fit(claim.UserName), uid));
             }
 
-            var request = desk.Release(id, new CardEnrollmentError(problem!.Code, problem.Detail));
-            return Results.Ok(Answer(request, problem.Code, problem.Code == "TAG_ALREADY_ASSIGNED"
+            var status = desk.Release(id, new CardEnrollmentError(problem!.Code, problem.Detail));
+            return Results.Ok(Answer(id, status, problem.Code, null, problem.Code == "TAG_ALREADY_ASSIGNED"
                 ? ["Card already in use", "Tap a different", "card", ""]
                 : ["Card not added", Fit(problem.Code), "See the web app", ""]));
         }
         catch
         {
-            desk.Release(id, new CardEnrollmentError("SERVER_ERROR", "The card could not be saved."));
+            desk.Release(id, new CardEnrollmentError("SERVER_ERROR", "The tap could not be saved."));
             throw;
         }
     }
 
-    static object Answer(CardEnrollment r, string? failureCode, params string[] lcd) =>
-        new { r.Id, r.Status, FailureCode = failureCode, r.Card, LcdLines = lcd };
+    static async Task<IResult> StartTagScan(TagScanStart? body, HttpContext http, TamsDbContext db, CardEnrollmentDesk desk, CancellationToken ct)
+    {
+        var label = body?.Label?.Trim();
+        if (body?.AssetId is { } assetId)
+        {
+            var code = await db.Assets.AsNoTracking().Where(a => a.Id == assetId && a.DeletedAt == null)
+                .Select(a => a.AssetCode).FirstOrDefaultAsync(ct);
+            if (code is null) return Problems.NotFound("ASSET_NOT_FOUND", "Asset not found.");
+            if (string.IsNullOrEmpty(label)) label = code;
+        }
+        var scan = desk.StartTagScan(body?.AssetId, string.IsNullOrEmpty(label) ? "New item" : label, Support.ActorId(http));
+        return Results.Created($"/assets/tag-scan/{scan.Id}", scan);
+    }
+
+    static IResult GetTagScan(Guid id, CardEnrollmentDesk desk) =>
+        desk.FindTagScan(id) is { } r ? Results.Ok(r) : TagScanNotFound();
+
+    static IResult CancelTagScan(Guid id, CardEnrollmentDesk desk) =>
+        desk.CancelTagScan(id) is { } r ? Results.Ok(r) : TagScanNotFound();
+
+    static object Answer(Guid id, string status, string? failureCode, CardDto? card, params string[] lcd) =>
+        new { Id = id, Status = status, FailureCode = failureCode, Card = card, LcdLines = lcd };
+
+    // A tag scan answers with tagUid where an Add card answer has card.
+    static object TagAnswer(Guid id, string status, string? failureCode, string? tagUid, params string[] lcd) =>
+        new { Id = id, Status = status, FailureCode = failureCode, TagUid = tagUid, LcdLines = lcd };
 
     // The LCD is 20 columns wide.
     internal static string Fit(string text) => text.Length <= 20 ? text : text[..20];
 
     /// <summary>The prompt an idle kiosk shows while a request is waiting.</summary>
-    internal static string[] PromptLines(CardEnrollmentPrompt p) => ["Add card for", Fit(p.UserName), "Tap the new card", ""];
+    internal static string[] PromptLines(CardEnrollmentPrompt p) => p.Kind == CardEnrollmentDesk.AssetTag
+        ? ["Scan item tag", Fit(p.UserName), "Tap the item tag", ""]
+        : ["Add card for", Fit(p.UserName), "Tap the new card", ""];
 
     static IResult NotFound() => Problems.NotFound("CARD_ENROLLMENT_NOT_FOUND", "Card enrollment not found.");
+
+    static IResult TagScanNotFound() => Problems.NotFound("TAG_SCAN_NOT_FOUND", "Tag scan not found.");
 }
