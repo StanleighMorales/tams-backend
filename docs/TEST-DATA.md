@@ -218,6 +218,12 @@ A sample base64 template: `ZmFrZS1hczYwOC10ZW1wbGF0ZS0wMDAx` (any base64 text wo
 `GET /audit-log?actorUserId=<id>&from=2026-01-01T00:00:00%2B00:00&to=2027-01-01T00:00:00%2B00:00`.
 Send an explicit offset in `from` and `to`; `entityType` values are lowercase snake_case (`asset`, `asset_category`, `student`, `user`).
 
+## 12a. Reports (ADMIN only)
+
+`GET /reports` returns 7 cards (loans, anomalies, violations, kiosk, stations, audits, events). Open each with
+`GET /reports/loans`, and narrow the period with `GET /reports/loans?from=2026-11-01T00:00:00%2B08:00&to=2026-11-27T00:00:00%2B08:00`.
+`GET /reports/nope` is 404, and `from` after `to` is 400. Every non-admin role gets 403. Empty data still returns 200 with zeros. See `docs/REPORTS.md`.
+
 ## 13. Role checks (log in as each user from section 2)
 
 | Role | Allowed | Expect 403 |
