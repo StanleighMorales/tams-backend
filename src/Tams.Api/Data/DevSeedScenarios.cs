@@ -23,13 +23,15 @@ public static class DevSeedScenarios
         if (await db.Assets.AnyAsync(a => a.AssetCode == "LT-003")) return;
         var store = await db.Rooms.FirstOrDefaultAsync(r => r.Code == "STORE-1");
         if (store is null) return; // the Seed:Demo base has not run
+        await using var tx = await db.Database.BeginTransactionAsync(); // all or nothing, so a failed run does not leave a half-seed that the LT-003 check then skips
 
         var now = DateTimeOffset.UtcNow;
         DateTimeOffset Ago(double hours) => now.AddHours(-hours);
 
         // ---------------------------------------------------------------- people and places (existing demo rows)
         User U(string email) => db.Users.First(u => u.Email == email);
-        var admin = await db.Users.FirstAsync(u => u.Role == UserRole.Admin);
+        var admin = await db.Users.FirstOrDefaultAsync(u => u.Role == UserRole.Admin);
+        if (admin is null) return; // no Bootstrap admin yet; the demo accounts are not enough to attribute the data
         var tech = U("tech@tams.test");
         var custodian = U("custodian@tams.test");
         var ins1 = U("instructor@tams.test");
@@ -169,7 +171,9 @@ public static class DevSeedScenarios
         await db.SaveChangesAsync(); // places, people and assets first; everything below hangs off them
 
         // ---------------------------------------------------------------- shared helpers for the transaction data
-        var loanSeq = 0;
+        // Continue after any loan already in the database (the base demo seed or real use), so L-yyyy-nnnnnn stays unique.
+        var loanNos = await db.Loans.Select(l => l.LoanNo).ToListAsync();
+        var loanSeq = loanNos.Select(n => int.TryParse(n[(n.LastIndexOf('-') + 1)..], out var v) ? v : 0).DefaultIfEmpty(0).Max();
         Loan? NoLoan = null;
 
         void Led(LedgerEvent e, Loan l, DateTimeOffset at, Guid? station = null, Guid? actor = null, string? details = null) =>
@@ -565,6 +569,7 @@ public static class DevSeedScenarios
         SeedAudit(avr, AuditStatus.SignedOff, ["SPK-003"], [], 0, 96);
 
         await db.SaveChangesAsync();
+        await tx.CommitAsync();
         services.GetRequiredService<ILoggerFactory>().CreateLogger("DevSeed")
             .LogWarning("Seed:Scenarios loaded {Assets} assets, {Students} students and {Loans} loans of test data.",
                 await db.Assets.CountAsync(), await db.Students.CountAsync(), await db.Loans.CountAsync());
