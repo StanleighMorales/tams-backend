@@ -131,7 +131,7 @@ Proposed LCD text (20 characters per line, 4 lines; hardware to confirm it fits)
 | 7 | Fingerprint images: server-side SourceAFIS on the sensor image, image never stored; reword the letter, FR-1.3, NFR-11 and §6.2 | biometric request s5, FR-1.3, NFR-11 | built, option A (G1); threshold needs real captures; PRD and letter wording to change |
 | 8 | Several items per student checkout, configurable (gap S1) | F1, FR-1.1, FR-1.5, FR-1.9 | built (E8); PRD wording to change |
 | 9 | "Add card" at the kiosk: staff register an instructor card by tapping it on the counter kiosk; revoked UIDs can be issued again; users list their cards | F1 step 1, §6.2, §7.3 | built, see docs/CARD-ENROLLMENT.md (simulator has Add card and a scenario); PRD wording to change; kiosk firmware must add card enrollment mode |
-| 10 | Admin reports: `GET /reports` (card list) and `GET /reports/{key}` (detail) over loans, anomalies, penalties, kiosk, stations, audits and events. The PRD has only the audit report | §6.3, FR-7.7 | built (E9, TAMS-134, PR #39), see docs/REPORTS.md; PRD §6.3 and the web screens table updated |
+| 10 | Admin reports: `GET /reports` (card list) and `GET /reports/{key}` (detail) over loans, anomalies, penalties, kiosk, stations, audits and events. The PRD has only the audit report | §6.3, FR-7.7 | built (E9, merged PR #39, TAMS-134 Done), see docs/REPORTS.md; PRD §6.3 and the web screens table updated |
 
 ## New tasks from this log
 
