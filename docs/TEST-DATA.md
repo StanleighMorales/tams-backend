@@ -237,6 +237,29 @@ Send an explicit offset in `from` and `to`; `entityType` values are lowercase sn
 
 As ADMIN, with a room that has assets: `GET /api/rooms/{id}/checklist:export?format=xlsx` returns a workbook (columns asset_id, asset_code, name, category, serial_no, found, notes). Type `Y` in `found` for some rows and send it to `POST /api/audits/import` (multipart: `file`, `roomId`); a CSV still works, the format is detected from the file. Then `GET /api/audits/{id}/report?format=xlsx` (sheets Summary and Items), next to `pdf` and `csv`. Any other format is 400; a corrupt workbook is 400 `CSV_MALFORMED`.
 
+## 14a. Scenario data (`SEED_SCENARIOS=true`)
+
+Needs `SEED_DEMO=true` as well (Docker: both in `.env`; without Docker: `Seed__Demo` and `Seed__Scenarios`), Development only.
+It is added on startup to a database that has the demo set but no asset `LT-003`, and again after the simulator's Reset
+button. Accounts are the demo accounts in `docs/SIMULATOR.md` (all `Demo#Pass123`; `instructor3@tams.test` is a second event coordinator).
+
+| What | Codes |
+|---|---|
+| New rooms | `STORE-2` (AV Storage), `AVR-1`, `LAB-103`, `LAB-201`, `LECT-101` |
+| New stations | counters `KIOSK-2` (in `STORE-1`) and `KIOSK-3` (in `STORE-2`); room readers `ROOM-102`, `ROOM-103`, `ROOM-201`, `ROOM-AVR`. The seeded pending approvals sit on `KIOSK-2` and `KIOSK-3`, so `KIOSK-1` stays free for the simulator |
+| Borrowable assets | `LT-003` to `LT-014`, `PRJ-001` to `PRJ-005`, `EC-001` to `EC-004`, `CAM-001` to `CAM-003`, `SPK-001` to `SPK-004`. Tags are fake and run in that order: `FEED00000001` (`LT-003`) up to `FEED0000001C` (`SPK-004`) |
+| Fixed assets (no tag, print the QR) | `PC-101-02` to `PC-101-07`, `PC-102-01` to `PC-102-03`, `PC-103-01` to `PC-103-03`, `MON-001` to `MON-004`, `NET-001` to `NET-003` |
+| Wrong-room monitors | `MON-001` (belongs to `LAB-101`, now in `LAB-102`) and `MON-002` (belongs to `LAB-101`, now in `LAB-103`): scan them in the audit of the room they are in and they come back `MISPLACED` |
+| Damaged, in maintenance | `LT-012`, `CAM-001` |
+| Retired (left out of rosters) | `EC-003`, `EC-004`, `PC-101-06`, `MON-004` |
+| Condition FAIR | `LT-014`, `CAM-003`, `PC-102-02`, `NET-002` |
+| Students | `2025-0101` to `2025-0124`, across `BSCS-3A`, `BSIT-1B`, `BSIT-2A`, `BSCS-1A`, `BSIT-3C`, `BSIS-2A` |
+| Events | 8: scheduled, active, closed and cancelled, two of each (coordinators `instructor@` and `instructor3@`) |
+| Audits | 6: `STORE-2` and `LAB-101` in progress; `LAB-102` and `LAB-103` completed (with the misplaced monitors); `LAB-201` and `AVR-1` signed off |
+
+Loans, approvals, anomalies, liabilities, marks and freezes cover every state at least twice (see `docs/SIMULATOR.md`). Loans carry no
+photo file (marked purged). Loan numbers continue after any existing loan.
+
 ## 15. Not on `dev` yet
 
 Kiosk checkout and return, approvals, room scans, loans, anomalies, dashboard, events, inventory audits, notifications,

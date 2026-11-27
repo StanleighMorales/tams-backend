@@ -39,7 +39,8 @@ browser's secure DNS if it still fails. Without DNS: `http://<pc-tailnet-ip>:808
 ## Shared database and the reset button
 
 Everyone shares one database, so two people testing at once see each other's loans and sessions. The simulator's red
-"Reset database" button (`POST /sim/reset`) drops the whole database and reseeds it. It needs the ADMIN account
+"Reset database" button (`POST /sim/reset`) drops the whole database and reseeds it (the demo data, plus the scenario set when `SEED_SCENARIOS=true`), so everything the
+team created is gone. It needs the ADMIN account
 (anonymous gets 401, other roles 403), but the demo admin login is public in the repo, so any teammate can use it.
 Tell the team before you test, and do not click it while someone else is working. Turn it off or protect it more
 before this host is exposed with Funnel.
@@ -47,7 +48,8 @@ before this host is exposed with Funnel.
 ## Accounts and test data
 
 Demo accounts, station codes and tags are in `docs/TEST-DATA.md`. `SEED_DEMO=true` loads them into an empty
-database. Push runs as the FAKE provider (SignalR events `approval.push` and `notice.push`) until Firebase
+database. For a bigger set (about 50 assets, 28 students, 29 loans in every state, events and audits) also set
+`SEED_SCENARIOS=true` in `.env`; the codes and tags are in `docs/TEST-DATA.md` section 14a. Push runs as the FAKE provider (SignalR events `approval.push` and `notice.push`) until Firebase
 credentials are set (TAMS-73).
 
 ## How it runs

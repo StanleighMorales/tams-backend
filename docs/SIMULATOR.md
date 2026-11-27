@@ -29,6 +29,10 @@ loans; wrong-room and timed-out anomalies; outstanding, paid, replaced and waive
 progress, completed and signed off. Loans carry no photo file (marked purged). `DevSeedScenarios.cs` holds it, and it is
 off by default so the integration tests keep the small set.
 
+With Docker set `SEED_SCENARIOS=true` next to `SEED_DEMO=true` in `.env` (see `.env.example`); compose passes it to the API as
+`Seed__Scenarios`. Setting `Seed__Scenarios` is for running the API without Docker. The assets, tags and rooms it adds are in
+`docs/TEST-DATA.md` section 14a.
+
 ## Layout, accounts and reset
 
 The page opens on **Start here**: the two big scenario buttons (happy-path checkout, return), the denied-path scenarios and the rest
@@ -40,7 +44,7 @@ coach line that says which button to press next. Connection settings, camera opt
 tech and custodian. Picking a teacher also selects that teacher's card (an approval goes to the phone of the instructor who owns the
 card, so the two must match), and picking a card in the card list switches the phone to its owner.
 
-**Reset database.** The red button in Start here wipes the database and seeds it again, for testing only. Click once to arm it (4 s),
+**Reset database.** The red button in Start here wipes the database and seeds it again (the demo data, plus the scenario set when it is on), for testing only. Click once to arm it (4 s),
 click again to run. It is `POST /sim/reset` with the header `X-Sim-Reset: yes` (400 without it), mapped in **Development only**. It needs an **ADMIN**
 token (401 without a login, 403 for other roles), so the staff panel must be signed in as admin; do not expose a Development instance publicly. It drops the database, migrates, then reseeds the admin and the demo
 data (when `Seed__Demo=true`), and the page reloads and logs the panels back in. Loans, sessions, enrolled fingerprints and the ledger
