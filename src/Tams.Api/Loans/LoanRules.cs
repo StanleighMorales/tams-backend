@@ -293,7 +293,7 @@ static class LoanRules
             outbox.User(instructor, "warning.issued", w);
         }
         if (freeze is not null) outbox.User(freeze.InstructorUserId, "instructor.frozen", FreezeEvent(freeze, loan, who));
-        if (from != asset.Status) outbox.Staff("asset.statusChanged", StatusChanged(asset.Id, from, asset.Status, asset.CurrentRoomId));
+        if (from != asset.Status) outbox.ForLoan(loan, "asset.statusChanged", StatusChanged(asset.Id, from, asset.Status, asset.CurrentRoomId));
         await OccupancyChangedAsync(db, outbox, loan.DestinationRoomId, now, ct);
         return true;
     }
@@ -349,7 +349,7 @@ static class LoanRules
         outbox.Staff("loan.overdue", evt);
         outbox.User(instructor, "loan.overdue", evt);
         if (freeze is not null) outbox.User(freeze.InstructorUserId, "instructor.frozen", FreezeEvent(freeze, loan, who));
-        if (from != AssetStatus.Overdue) outbox.Staff("asset.statusChanged", StatusChanged(asset.Id, from, AssetStatus.Overdue, asset.CurrentRoomId));
+        if (from != AssetStatus.Overdue) outbox.ForLoan(loan, "asset.statusChanged", StatusChanged(asset.Id, from, AssetStatus.Overdue, asset.CurrentRoomId));
         return true;
     }
 
@@ -402,7 +402,7 @@ static class LoanRules
         if (sid is Guid student) await RecomputeStandingAsync(db, settings, student, ct);
 
         if (freeze is not null) outbox.User(freeze.InstructorUserId, "instructor.frozen", FreezeEvent(freeze, loan, who));
-        outbox.Staff("asset.statusChanged", StatusChanged(asset.Id, from, AssetStatus.Missing, asset.CurrentRoomId));
+        outbox.ForLoan(loan, "asset.statusChanged", StatusChanged(asset.Id, from, AssetStatus.Missing, asset.CurrentRoomId));
         await OccupancyChangedAsync(db, outbox, loan.DestinationRoomId, now, ct);
         return loan;
     }
@@ -432,7 +432,7 @@ static class LoanRules
         Ledger(db, LedgerEvent.Return, loan, now, stationId, actorUserId, new { returnedByStudentId, note });
         await db.SaveChangesAsync(ct);
 
-        outbox.Staff("asset.statusChanged", StatusChanged(asset.Id, from, AssetStatus.InStorage, asset.CurrentRoomId));
+        outbox.ForLoan(loan, "asset.statusChanged", StatusChanged(asset.Id, from, AssetStatus.InStorage, asset.CurrentRoomId));
         await OccupancyChangedAsync(db, outbox, loan.DestinationRoomId, now, ct);
         return loan;
     }
@@ -461,7 +461,7 @@ static class LoanRules
         Audit(db, "LOAN_VOIDED", "loan", loan.Id, new { loan.LoanNo, reason }, actorUserId, stationId: stationId);
         await db.SaveChangesAsync(ct);
 
-        outbox.Staff("asset.statusChanged", StatusChanged(asset.Id, from, AssetStatus.InStorage, asset.CurrentRoomId));
+        outbox.ForLoan(loan, "asset.statusChanged", StatusChanged(asset.Id, from, AssetStatus.InStorage, asset.CurrentRoomId));
         await OccupancyChangedAsync(db, outbox, loan.DestinationRoomId, now, ct);
         return loan;
     }

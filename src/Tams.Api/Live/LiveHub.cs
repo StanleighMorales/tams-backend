@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Tams.Api.Assets;
 using Tams.Api.Auth;
+using Tams.Api.Data.Entities;
 
 namespace Tams.Api.Live;
 
@@ -34,6 +35,14 @@ public sealed class Outbox
     readonly List<(string Group, string Event, object Payload)> items = [];
 
     public void Staff(string evt, object payload) => items.Add((LiveHub.StaffGroup, evt, payload));
+
+    /// <summary>A loan event: every staff dashboard, plus the account that answers for the loan (the approving instructor,
+    /// or the event coordinator) so their app sees their own loans change without reloading.</summary>
+    public void ForLoan(Loan loan, string evt, object payload)
+    {
+        Staff(evt, payload);
+        User(loan.ApprovedByUserId ?? loan.CoordinatorUserId, evt, payload);
+    }
 
     public void User(Guid? userId, string evt, object payload)
     {
