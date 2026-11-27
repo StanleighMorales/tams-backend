@@ -80,5 +80,13 @@ the 404 follow from that. Add the key to `Keys` in `tests/Tams.Api.Tests/Integra
 
 ## Tests
 
-`ReportTests` runs every report against the real database (so each query is translated by EF), checks the card list, the 404 and
-400 cases, and that each non-admin role gets 403. `RoleMatrixTests` also checks `/api/reports`.
+`ReportTests` runs every report against the real database (so each query is translated by EF) and checks:
+
+- the card list, the 404 and 400 cases, and that each non-admin role gets 403;
+- **numbers**: it inserts known anomaly and event rows in a one-day window in the far future (random per run, removed afterwards)
+  and asserts the exact counts, the resolve-time average and the period filter (a row a day later is left out);
+- an empty period returns zeros for every period-based report;
+- loan totals equal the database count and the status breakdown adds up to the total;
+- station health counts cover every station and ignore the period.
+
+`RoleMatrixTests` also checks `/api/reports`. Jira: TAMS-134.
