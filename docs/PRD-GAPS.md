@@ -18,7 +18,7 @@ This is the one list of backend work still to do. Each item's tasks are written 
 | E4 | Push anomalies, transit timeouts and stations offline to staff, with full details | 1 d | none | Part 2, Q4 below | Built, merged PR #13, TAMS-124 Done (real FCM untested) |
 | E3 | Excel export and import for checklists and audit reports | 1 d | none | Part 2, Q3 below | Built, merged PR #12, TAMS-125 Done |
 | E9 | Admin reports list and detail (`/reports`), a scope addition the PRD does not list | 1 d | none | `docs/REPORTS.md` | Built, merged PR #39, TAMS-134 Done. PRD §6.3 and the web screens table updated 2026-11-27. 354 tests pass |
-| E10 | Loan events also reach the approving instructor; response samples and shape tests for the mobile app | 1 d | none | `docs/API-SAMPLES.md` | Built, PR #43 to `dev` (open), TAMS-135. PRD §6.4 updated 2026-11-27. 362 tests pass |
+| E10 | Loan events also reach the approving instructor; response samples and shape tests for the mobile app | 1 d | none | `docs/API-SAMPLES.md` | Built, merged PR #43, TAMS-135 Done. PRD §6.4 updated 2026-11-27. 362 tests pass |
 | E2 | Reword FR-6.5 (holds stay until staff lift) and tell web | 0.25 d | none | Part 2, Q2 below | Built (docs and a test only), merged PR #14, TAMS-126 Done. PRD wording still to change |
 | G2 | Station credentials for room stations | 1.5 d | none | Part 1 | Built, merged PR #19, TAMS-127 Done. Hardware must load the key |
 | G1 | Real fingerprint matcher (SourceAFIS on the sensor image, decided) | 4 to 6 d | real captures from TAMS-52 | Part 1 | Built phases 2 to 4, merged PR #17 and #25, TAMS-128 Done. Phase 1 (real captures, threshold) NOT done |
