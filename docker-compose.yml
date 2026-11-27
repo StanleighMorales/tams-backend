@@ -41,6 +41,7 @@ services:
       Cors__Origins: ${CORS_ORIGINS:-http://localhost:5173}
       # Development only: load the sample data from docs/TEST-DATA.md into an empty database.
       Seed__Demo: ${SEED_DEMO:-false}
+      Seed__Scenarios: ${SEED_SCENARIOS:-false}
       Backup__StatusPath: /app/backup-status/backup.json
     depends_on:
       db:
