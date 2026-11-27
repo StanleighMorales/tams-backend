@@ -133,6 +133,8 @@ Proposed LCD text (20 characters per line, 4 lines; hardware to confirm it fits)
 | 9 | "Add card" at the kiosk: staff register an instructor card by tapping it on the counter kiosk; revoked UIDs can be issued again; users list their cards | F1 step 1, §6.2, §7.3 | built, see docs/CARD-ENROLLMENT.md (simulator has Add card and a scenario); PRD wording to change; kiosk firmware must add card enrollment mode |
 | 10 | Admin reports: `GET /reports` (card list) and `GET /reports/{key}` (detail) over loans, anomalies, penalties, kiosk, stations, audits and events. The PRD has only the audit report | §6.3, FR-7.7 | built (E9, merged PR #39, TAMS-134 Done), see docs/REPORTS.md; PRD §6.3 and the web screens table updated |
 | 11 | Loan events reach the approving instructor: `loan.created` and `asset.statusChanged` also go to the instructor's `user:{id}` group (event coordinator for event loans), so My Loans updates on a room check-in. Response samples for the mobile app | §6.4 | built (E10, merged PR #43, TAMS-135 Done), see docs/API-SAMPLES.md; PRD §6.4 table updated 2026-11-27 |
+| 12 | Scan tag: staff press Scan tag on the asset form and the idle counter kiosk reads the next tag tapped, so the UID is not typed. Nothing is saved by the scan | F9, F1 step 1, §6.2 | built (E11, merged PR #38, TAMS-136 Done), see docs/ASSET-TAG-SCAN.md; PRD wording to change; web button and kiosk firmware `kind` not done |
+| 13 | Scenario test data for the dev database (about 50 assets, 28 students, 29 loans in every state, events, audits). Not a PRD item: a test aid | none | built (E12, merged PR #41 and #42, TAMS-137 Done), see docs/TEST-DATA.md 14a and docs/SIMULATOR.md |
 
 ## New tasks from this log
 
