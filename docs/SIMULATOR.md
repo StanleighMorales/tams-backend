@@ -22,6 +22,13 @@ Open `http://localhost:8080/sim` (or your `API_PORT`). Without Docker for the AP
 The demo seeder and CORS come from `dev` (merged into this branch); the seeder fills rooms, a kiosk, a room reader, assets,
 students and demo accounts only when `Seed__Demo=true`.
 
+Add `Seed__Scenarios=true` (with `Seed__Demo=true`) for a bigger test set: about 50 assets (30 borrowable with fake `FEED...`
+tags, 20 fixed with none, so their QR codes can be printed for the audit scan), 28 students and 29 loans. Every state has
+at least two rows: pending, declined, expired, cancelled and failed approvals; in transit, verified, overdue and missing
+loans; wrong-room and timed-out anomalies; outstanding, paid, replaced and waived liabilities; events; and inventory audits in
+progress, completed and signed off. Loans carry no photo file (marked purged). `DevSeedScenarios.cs` holds it, and it is
+off by default so the integration tests keep the small set.
+
 ## Layout, accounts and reset
 
 The page opens on **Start here**: the two big scenario buttons (happy-path checkout, return), the denied-path scenarios and the rest

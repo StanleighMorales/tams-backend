@@ -94,6 +94,7 @@ if (app.Environment.IsDevelopment())
 
 await app.SeedDevelopmentAdminAsync();
 await app.Services.SeedDemoDataAsync();
+await app.Services.SeedScenarioDataAsync();
 app.MapAuthEndpoints();
 app.MapUserEndpoints();
 app.MapAssetEndpoints();
@@ -163,6 +164,7 @@ if (app.Environment.IsDevelopment())
         }
         await app.SeedDevelopmentAdminAsync();
         await app.Services.SeedDemoDataAsync();
+        await app.Services.SeedScenarioDataAsync();
         return Results.Ok(new { reset = true });
     }).RequireAuthorization(Policies.AdminOnly).ExcludeFromDescription();
 }
