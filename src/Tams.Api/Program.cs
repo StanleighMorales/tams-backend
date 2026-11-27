@@ -19,6 +19,7 @@ using Tams.Api.Kiosk;
 using Tams.Api.Live;
 using Tams.Api.Loans;
 using Tams.Api.Push;
+using Tams.Api.Reports;
 using Tams.Api.Retention;
 using Tams.Api.Violations;
 
@@ -102,6 +103,7 @@ app.MapQrEndpoints();
 app.MapFacilityEndpoints();
 app.MapSettingsEndpoints();
 app.MapAuditLogEndpoints();
+app.MapReportEndpoints();
 app.MapRetentionEndpoints();
 app.MapKioskEndpoints();
 app.MapApprovalEndpoints();
