@@ -48,8 +48,18 @@ public static class DevSeedScenarios
         var bscs = await db.Sections.FirstAsync(s => s.Code == "BSCS-3A");
         var bsit = await db.Sections.FirstAsync(s => s.Code == "BSIT-1B");
 
+        // Rows with a unique key (room code, category name, asset code and so on) are reused when the database already has
+        // them, so the seed can top up a database that holds real or half-seeded data instead of failing on the unique index.
+        // The transaction rows below still get added every run; the LT-003 check above is what stops a second run.
+        var roomsByCode = await db.Rooms.ToDictionaryAsync(r => r.Code);
+        var stationsByCode = await db.Stations.ToDictionaryAsync(s => s.StationCode);
+        var categoriesByName = await db.AssetCategories.ToDictionaryAsync(c => c.Name);
+        var assetsByCode = await db.Assets.ToDictionaryAsync(a => a.AssetCode);
+        var sectionsByCode = await db.Sections.ToDictionaryAsync(s => s.Code);
+        var studentsByNo = await db.Students.ToDictionaryAsync(s => s.StudentNo);
+
         // ---------------------------------------------------------------- rooms and stations
-        Room NewRoom(string code, string name, short floor, bool storage) => db.Rooms.Add(new Room
+        Room NewRoom(string code, string name, short floor, bool storage) => roomsByCode.TryGetValue(code, out var existing) ? existing : db.Rooms.Add(new Room
         {
             Id = Guid.NewGuid(), Code = code, Name = name, Building = "Main", Floor = floor, IsStorage = storage,
             CreatedAt = now, UpdatedAt = now,
@@ -62,7 +72,7 @@ public static class DevSeedScenarios
 
         // Health stays at its default (offline): the sweeper recomputes it from real heartbeats, and a seeded heartbeat time
         // would make it raise "station went offline" alerts.
-        Station NewStation(string code, StationType type, Room room, string name) => db.Stations.Add(new Station
+        Station NewStation(string code, StationType type, Room room, string name) => stationsByCode.TryGetValue(code, out var existing) ? existing : db.Stations.Add(new Station
         {
             Id = Guid.NewGuid(), StationCode = code, Type = type, RoomId = room.Id, Name = name, CreatedAt = now, UpdatedAt = now,
         }).Entity;
@@ -76,7 +86,7 @@ public static class DevSeedScenarios
         var readerAvr = NewStation("ROOM-AVR", StationType.RoomStation, avr, "AV Room Reader");
 
         // ---------------------------------------------------------------- categories
-        AssetCategory Cat(string name, bool borrowable) => db.AssetCategories.Add(new AssetCategory
+        AssetCategory Cat(string name, bool borrowable) => categoriesByName.TryGetValue(name, out var existing) ? existing : db.AssetCategories.Add(new AssetCategory
         {
             Id = Guid.NewGuid(), Name = name, Description = name, IsBorrowable = borrowable,
         }).Entity;
@@ -93,10 +103,12 @@ public static class DevSeedScenarios
         Asset A(string code, string name, AssetCategory cat, AssetType type, string brand, string model, Room home, decimal cost,
             AssetStatus status = AssetStatus.InStorage, AssetCondition cond = AssetCondition.Good, Room? at = null)
         {
+            var tagUid = type == AssetType.Borrowable ? "FEED" + (++tag).ToString("X8") : null;
+            if (assetsByCode.TryGetValue(code, out var found)) return X[code] = found;
             var a = new Asset
             {
                 Id = Guid.NewGuid(), AssetCode = code, Name = name, CategoryId = cat.Id, Type = type, Brand = brand, Model = model,
-                SerialNo = "SN-" + code, RfidTagUid = type == AssetType.Borrowable ? "FEED" + (++tag).ToString("X8") : null,
+                SerialNo = "SN-" + code, RfidTagUid = tagUid,
                 HomeRoomId = home.Id, CurrentRoomId = (at ?? home).Id, Status = status, Condition = cond, ReplacementCost = cost,
                 AcquiredAt = new DateOnly(2026, 6, 15), CreatedAt = now, UpdatedAt = now,
             };
@@ -141,7 +153,7 @@ public static class DevSeedScenarios
         Set("NET-002", AssetStatus.InStorage, AssetCondition.Fair);
 
         // ---------------------------------------------------------------- sections and students
-        Section Sec(string code, string program, short year) => db.Sections.Add(new Section
+        Section Sec(string code, string program, short year) => sectionsByCode.TryGetValue(code, out var existing) ? existing : db.Sections.Add(new Section
         {
             Id = Guid.NewGuid(), Code = code, Program = program, YearLevel = year, SchoolYear = "2026-2027",
             AdviserUserId = year % 2 == 0 ? ins2.Id : ins3.Id,
@@ -155,6 +167,7 @@ public static class DevSeedScenarios
         var S = new List<Student>();
         for (var i = 0; i < first.Length; i++)
         {
+            if (studentsByNo.TryGetValue($"2025-{101 + i:D4}", out var found)) { S.Add(found); continue; }
             var st = new Student
             {
                 Id = Guid.NewGuid(), StudentNo = $"2025-{101 + i:D4}", FirstName = first[i], LastName = last[i],
