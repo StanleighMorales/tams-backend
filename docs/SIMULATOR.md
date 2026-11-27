@@ -22,6 +22,17 @@ Open `http://localhost:8080/sim` (or your `API_PORT`). Without Docker for the AP
 The demo seeder and CORS come from `dev` (merged into this branch); the seeder fills rooms, a kiosk, a room reader, assets,
 students and demo accounts only when `Seed__Demo=true`.
 
+Add `Seed__Scenarios=true` (with `Seed__Demo=true`) for a bigger test set: about 50 assets (30 borrowable with fake `FEED...`
+tags, 20 fixed with none, so their QR codes can be printed for the audit scan), 28 students and 29 loans. Every state has
+at least two rows: pending, declined, expired, cancelled and failed approvals; in transit, verified, overdue and missing
+loans; wrong-room and timed-out anomalies; outstanding, paid, replaced and waived liabilities; events; and inventory audits in
+progress, completed and signed off. Loans carry no photo file (marked purged). `DevSeedScenarios.cs` holds it, and it is
+off by default so the integration tests keep the small set.
+
+With Docker set `SEED_SCENARIOS=true` next to `SEED_DEMO=true` in `.env` (see `.env.example`); compose passes it to the API as
+`Seed__Scenarios`. Setting `Seed__Scenarios` is for running the API without Docker. The assets, tags and rooms it adds are in
+`docs/TEST-DATA.md` section 14a.
+
 ## Layout, accounts and reset
 
 The page opens on **Start here**: the two big scenario buttons (happy-path checkout, return), the denied-path scenarios and the rest
@@ -33,7 +44,7 @@ coach line that says which button to press next. Connection settings, camera opt
 tech and custodian. Picking a teacher also selects that teacher's card (an approval goes to the phone of the instructor who owns the
 card, so the two must match), and picking a card in the card list switches the phone to its owner.
 
-**Reset database.** The red button in Start here wipes the database and seeds it again, for testing only. Click once to arm it (4 s),
+**Reset database.** The red button in Start here wipes the database and seeds it again (the demo data, plus the scenario set when it is on), for testing only. Click once to arm it (4 s),
 click again to run. It is `POST /sim/reset` with the header `X-Sim-Reset: yes` (400 without it), mapped in **Development only**. It needs an **ADMIN**
 token (401 without a login, 403 for other roles), so the staff panel must be signed in as admin; do not expose a Development instance publicly. It drops the database, migrates, then reseeds the admin and the demo
 data (when `Seed__Demo=true`), and the page reloads and logs the panels back in. Loans, sessions, enrolled fingerprints and the ledger
@@ -65,6 +76,9 @@ login it enrolls the student first.
 4. Loans panel shows the loan `IN_TRANSIT` (custody `AWAITING_ARRIVAL`). "Tap tag at room door" posts a room scan to `ROOM-101`
    (green LED = `SUCCESS`), and the loan becomes verified in the room.
 5. Return: "Start RETURN", "Place finger", "Tap tag on kiosk". No confirm; the loan closes on the tag tap.
+
+**Scan tag.** The same panel has "Scan tag" (staff login) and "Tap a new item tag". The LCD reads "Scan item tag / <label> / Tap the item tag",
+then "Tag read / <UID>" on a good tap, or "Tag already in use" (still waiting) for a UID held by a card or another asset. See `docs/ASSET-TAG-SCAN.md`.
 
 **Add card (card enrollment mode).** In the card reader panel pick an instructor and press "Add card" (needs the staff login). The kiosk's
 idle poll picks the request up (`cardEnrollment` in `GET /kiosk/{code}/session`) and the LCD reads "Add card for / <name> / Tap the new card".
@@ -116,6 +130,9 @@ item not on loan, wrong-room scan, plus four added for the firmware work:
 - **Add card at the kiosk (Iris):** staff starts Add card for Iris, the kiosk polls it up, a tap of Ina's card is refused
   (`TAG_ALREADY_ASSIGNED`, still waiting), a random new UID completes it, the scenario checks Iris lists the card, then revokes it
   again so she is left with her seeded card.
+- **Scan tag at the kiosk:** staff starts Scan tag (`POST /assets/tag-scan`), the kiosk polls it up as `kind: "ASSET_TAG"`, a tap of
+  LT-002's tag is refused (`TAG_ALREADY_ASSIGNED`, still waiting), a random new UID completes it, and the scenario checks the answer
+  and `GET /assets/tag-scan/{id}` both carry that `tagUid`. Nothing is saved.
 - **Event batch checkout + bulk return:** admin creates an event running now for the demo coordinator (Ina), her card opens
   `EVENT_BATCH`, two tags are borrowed, OK; then `EVENT_RETURN` returns both. The event is closed afterwards.
 - **Wi-Fi drop** (waits about a minute): sends a heartbeat, turns Wi-Fi off, waits for `GET /stations/health` to say Offline, turns

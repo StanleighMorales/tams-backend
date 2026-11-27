@@ -252,7 +252,7 @@ public static class LoanEndpoints
             var asset = await db.Assets.FirstAsync(a => a.Id == loan.AssetId, ct);
             if (loan.Status == LoanStatus.Active && asset.Status != AssetStatus.InTransit)
             {
-                outbox.Staff("asset.statusChanged", LoanRules.StatusChanged(asset.Id, asset.Status, AssetStatus.InTransit, room.Id));
+                outbox.ForLoan(loan, "asset.statusChanged", LoanRules.StatusChanged(asset.Id, asset.Status, AssetStatus.InTransit, room.Id));
                 asset.Status = AssetStatus.InTransit;
                 asset.CurrentRoomId = null;
                 asset.UpdatedAt = now;

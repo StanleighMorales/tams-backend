@@ -3,6 +3,7 @@ using Tams.Api.Auth;
 using Tams.Api.Common;
 using Tams.Api.Data;
 using Tams.Api.Data.Entities;
+using Tams.Api.Facilities;
 using Tams.Api.Http;
 
 namespace Tams.Api.Assets;
@@ -251,17 +252,20 @@ static class AssetEndpoints
             return Problems.Conflict("ASSET_CODE_TAKEN",
                 $"asset_code '{code}' is already used" + (codeRow.DeletedAt is null ? "." : " by a deleted asset (restore it instead)."));
 
-        if (uid is not null)
-        {
-            if (await db.AuthCards.AnyAsync(c => c.CardUid == uid && c.Status == CardStatus.Active, ct))
-                return Problems.Conflict("TAG_ALREADY_ASSIGNED", $"UID {uid} is already registered as an authorization card.");
-            var tagRow = await db.Assets.Where(a => a.DeletedAt == null && a.Id != selfId && a.RfidTagUid == uid)
-                .Select(a => new { a.DeletedAt }).FirstOrDefaultAsync(ct);
-            if (tagRow is not null)
-                return Problems.Conflict("TAG_ALREADY_ASSIGNED",
-                    $"RFID tag {uid} is already assigned to another asset" + (tagRow.DeletedAt is null ? "." : " (deleted)."));
-        }
+        if (uid is not null && await TagProblem(db, uid, selfId, ct) is { } p)
+            return Problems.Conflict(p.Code, p.Detail);
         return null;
+    }
+
+    /// <summary>The one rule for "may this asset carry this tag": not an active authorization card and not another live
+    /// asset's tag. Used by the asset save and by the kiosk "Scan tag" tap, so the two cannot drift apart.</summary>
+    internal static async Task<CardProblem?> TagProblem(TamsDbContext db, string uid, Guid? selfId, CancellationToken ct)
+    {
+        if (await db.AuthCards.AnyAsync(c => c.CardUid == uid && c.Status == CardStatus.Active, ct))
+            return new("TAG_ALREADY_ASSIGNED", $"UID {uid} is already registered as an authorization card.");
+        var other = await db.Assets.Where(a => a.DeletedAt == null && a.Id != selfId && a.RfidTagUid == uid)
+            .Select(a => a.AssetCode).FirstOrDefaultAsync(ct);
+        return other is null ? null : new("TAG_ALREADY_ASSIGNED", $"Tag {uid} is already attached to {other}.");
     }
 
     // Backstop for races: the unique indexes still win.

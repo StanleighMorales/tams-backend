@@ -19,6 +19,7 @@ using Tams.Api.Kiosk;
 using Tams.Api.Live;
 using Tams.Api.Loans;
 using Tams.Api.Push;
+using Tams.Api.Reports;
 using Tams.Api.Retention;
 using Tams.Api.Violations;
 
@@ -93,6 +94,7 @@ if (app.Environment.IsDevelopment())
 
 await app.SeedDevelopmentAdminAsync();
 await app.Services.SeedDemoDataAsync();
+await app.Services.SeedScenarioDataAsync();
 app.MapAuthEndpoints();
 app.MapUserEndpoints();
 app.MapAssetEndpoints();
@@ -102,6 +104,7 @@ app.MapQrEndpoints();
 app.MapFacilityEndpoints();
 app.MapSettingsEndpoints();
 app.MapAuditLogEndpoints();
+app.MapReportEndpoints();
 app.MapRetentionEndpoints();
 app.MapKioskEndpoints();
 app.MapApprovalEndpoints();
@@ -161,6 +164,7 @@ if (app.Environment.IsDevelopment())
         }
         await app.SeedDevelopmentAdminAsync();
         await app.Services.SeedDemoDataAsync();
+        await app.Services.SeedScenarioDataAsync();
         return Results.Ok(new { reset = true });
     }).RequireAuthorization(Policies.AdminOnly).ExcludeFromDescription();
 }

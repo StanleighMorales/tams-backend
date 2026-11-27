@@ -102,7 +102,7 @@ public static class DeviceEndpoints
                     }
                 }
                 LoanRules.Ledger(db, LedgerEvent.RoomVerified, loan, now, station.Id, details: new { late, roomId = station.RoomId });
-                outbox.Staff("asset.statusChanged", LoanRules.StatusChanged(asset.Id, from, tracked.Status, station.RoomId));
+                outbox.ForLoan(loan, "asset.statusChanged", LoanRules.StatusChanged(asset.Id, from, tracked.Status, station.RoomId));
             }
         }
 

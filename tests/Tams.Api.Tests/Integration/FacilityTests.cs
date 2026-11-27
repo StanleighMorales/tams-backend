@@ -312,6 +312,98 @@ public class FacilityTests(ApiFixture api)
         await admin.GetAsync($"/api/auth-cards/enrollment/{Guid.NewGuid()}").Expect(404, "CARD_ENROLLMENT_NOT_FOUND");
     }
 
+    // ------------------------------------------------------------ asset tag scan at the kiosk ("Scan tag")
+
+    async Task<(ApiClient Admin, string Station, (Guid Id, string Code, string RfidTag) Asset)> TagKiosk()
+    {
+        var (admin, _, station) = await CardKiosk();
+        var asset = await Seed.BorrowableAsset(admin, await Seed.Category(admin), await Seed.Room(admin, storage: true));
+        return (admin, station, asset);
+    }
+
+    [Fact]
+    public async Task Tag_scan_reads_the_next_tapped_tag_without_saving_anything()
+    {
+        var (admin, station, other) = await TagKiosk();
+        var scan = await admin.PostRawAsync("/api/assets/tag-scan", """{"label":"LP-NEW"}""").Ok(201);
+        Assert.Equal("WAITING", scan.GetProperty("status").GetString());
+        Assert.Equal("LP-NEW", scan.GetProperty("label").GetString());
+        Assert.True(IsNull(scan, "assetId"));
+
+        var prompt = (await PollKiosk(station)).GetProperty("cardEnrollment");
+        Assert.Equal(scan.Id(), prompt.Id());
+        Assert.Equal("ASSET_TAG", prompt.GetProperty("kind").GetString());
+
+        // Another asset's tag is refused and the request keeps waiting.
+        var refused = await (await TapCard(station, scan.Id(), other.RfidTag)).Json();
+        Assert.Equal("WAITING", refused.GetProperty("status").GetString());
+        Assert.Equal("TAG_ALREADY_ASSIGNED", refused.GetProperty("failureCode").GetString());
+        Assert.True(IsNull(refused, "tagUid"));
+        var waiting = await admin.GetAsync($"/api/assets/tag-scan/{scan.Id()}").Ok();
+        Assert.Equal("TAG_ALREADY_ASSIGNED", waiting.GetProperty("lastError").GetProperty("code").GetString());
+
+        var fresh = Seed.Hex(10);
+        var read = await (await TapCard(station, scan.Id(), fresh)).Json();
+        Assert.Equal("COMPLETED", read.GetProperty("status").GetString());
+        Assert.Equal(fresh, read.GetProperty("tagUid").GetString());
+        Assert.Equal("Tag read", read.GetProperty("lcdLines")[0].GetString());
+
+        var done = await admin.GetAsync($"/api/assets/tag-scan/{scan.Id()}").Ok();
+        Assert.Equal("COMPLETED", done.GetProperty("status").GetString());
+        Assert.Equal(fresh, done.GetProperty("tagUid").GetString());
+        Assert.True(IsNull(await PollKiosk(station), "cardEnrollment"));
+
+        // Nothing was saved, and the id is not an Add card request.
+        Assert.Empty((await admin.GetAsync($"/api/assets?q={fresh}").Ok()).GetProperty("items").EnumerateArray());
+        await admin.GetAsync($"/api/auth-cards/enrollment/{scan.Id()}").Expect(404, "CARD_ENROLLMENT_NOT_FOUND");
+    }
+
+    [Fact]
+    public async Task Tag_scan_on_edit_accepts_the_assets_own_tag_and_can_be_cancelled()
+    {
+        var (admin, station, own) = await TagKiosk();
+        var scan = await admin.PostRawAsync("/api/assets/tag-scan", $$"""{"assetId":"{{own.Id}}"}""").Ok(201);
+        Assert.Equal(own.Code, scan.GetProperty("label").GetString());
+
+        var read = await (await TapCard(station, scan.Id(), own.RfidTag)).Json();
+        Assert.Equal("COMPLETED", read.GetProperty("status").GetString());
+        Assert.Equal(own.RfidTag, read.GetProperty("tagUid").GetString());
+
+        // A finished request is returned unchanged by cancel.
+        var again = await admin.PostEmptyAsync($"/api/assets/tag-scan/{scan.Id()}/cancel").Ok();
+        Assert.Equal("COMPLETED", again.GetProperty("status").GetString());
+
+        var second = await admin.PostRawAsync("/api/assets/tag-scan", "{}").Ok(201);
+        Assert.Equal("New item", second.GetProperty("label").GetString());
+        var cancelled = await admin.PostEmptyAsync($"/api/assets/tag-scan/{second.Id()}/cancel").Ok();
+        Assert.Equal("CANCELLED", cancelled.GetProperty("status").GetString());
+        Assert.True(IsNull(await PollKiosk(station), "cardEnrollment"));
+        await TapCard(station, second.Id(), Seed.Hex(10)).Expect(409, "CARD_ENROLLMENT_NOT_WAITING");
+
+        await admin.PostRawAsync("/api/assets/tag-scan", $$"""{"assetId":"{{Guid.NewGuid()}}"}""").Expect(404, "ASSET_NOT_FOUND");
+        await admin.GetAsync($"/api/assets/tag-scan/{Guid.NewGuid()}").Expect(404, "TAG_SCAN_NOT_FOUND");
+        await (await api.As("CUSTODIAN")).PostRawAsync("/api/assets/tag-scan", "{}").Expect(403);
+    }
+
+    [Fact]
+    public async Task Tag_scan_and_add_card_replace_each_other_and_keep_their_ids_apart()
+    {
+        var (admin, owner, station) = await CardKiosk();
+        var card = (await admin.PostRawAsync("/api/auth-cards/enrollment", $$"""{"userId":"{{owner}}"}""").Ok(201)).Id();
+        var scan = (await admin.PostRawAsync("/api/assets/tag-scan", "{}").Ok(201)).Id();
+
+        var old = await admin.GetAsync($"/api/auth-cards/enrollment/{card}").Ok();
+        Assert.Equal("CANCELLED", old.GetProperty("status").GetString());
+        Assert.Equal(scan, (await PollKiosk(station)).GetProperty("cardEnrollment").Id());
+        await admin.GetAsync($"/api/assets/tag-scan/{card}").Expect(404, "TAG_SCAN_NOT_FOUND");
+
+        var next = (await admin.PostRawAsync("/api/auth-cards/enrollment", $$"""{"userId":"{{owner}}"}""").Ok(201)).Id();
+        Assert.Equal("CANCELLED", (await admin.GetAsync($"/api/assets/tag-scan/{scan}").Ok()).GetProperty("status").GetString());
+        var prompt = (await PollKiosk(station)).GetProperty("cardEnrollment");
+        Assert.Equal(next, prompt.Id());
+        Assert.Equal("CARD", prompt.GetProperty("kind").GetString());
+    }
+
     // ------------------------------------------------------------ a revoked card's UID can be issued again
 
     [Fact]
