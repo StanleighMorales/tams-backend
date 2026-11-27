@@ -31,6 +31,7 @@ public class RoleMatrixTests(ApiFixture api)
             ("/api/auth-cards", true, true, true, false),
             ("/api/settings", true, true, true, false),
             ("/api/audit-log", true, false, false, false),
+            ("/api/reports", true, false, false, false),
         })
         {
             Row("ADMIN", "GET", url, a); Row("TECH_STAFF", "GET", url, t);
